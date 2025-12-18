@@ -14,7 +14,8 @@ export const getUserById = async (id: string) => {
     });
     return user;
   } catch (error) {
-    console.log(error);
+    // Log error properly for server-side debugging
+    console.error("Error in getUserById:", error);
     return null;
   }
 };
@@ -29,7 +30,8 @@ export const getAccountByUserId = async (userId: string) => {
 
     return account;
   } catch (error) {
-    console.log(error);
+    // Log error properly for server-side debugging
+    console.error("Error in getAccountByUserId:", error);
     return null;
   }
 };
