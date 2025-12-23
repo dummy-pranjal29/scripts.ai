@@ -68,13 +68,13 @@ model Playground {
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  starMarks   StarMark[]
+  starMarks   starMarks[]
 
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 }
 
-model StarMark {
+model starMarks {
   id            String     @id @default(cuid()) @map("_id")
 
   userId        String

@@ -5,47 +5,60 @@ import { currentUser } from "@/modules/auth/actions";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { ensureUserExists } from "@/lib/auth";
+import { Star } from "lucide-react";
+import { se } from "date-fns/locale";
 
 export const toggleStarMarked = async (
   playgroundId: string,
   isChecked: boolean
 ) => {
-  const user = await currentUser();
-  const userId = user?.id;
-  if (!userId) {
-    throw new Error("User Id is Required");
+  // ✅ Always resolve DB-backed user (MongoDB ObjectId)
+  const user = await ensureUserExists();
+
+  if (!user) {
+    return { success: false, error: "UNAUTHORIZED" };
   }
 
   try {
-    if (isChecked) {
-      await db.starMark.create({
-        data: {
-          userId: userId!,
+    const existing = await db.starMark.findUnique({
+      where: {
+        userId_playgroundId: {
+          userId: user.id,
           playgroundId,
-          isMarked: isChecked,
         },
-      });
-    } else {
-      await db.starMark.delete({
-        where: {
-          userId_playgroundId: {
-            userId,
-            playgroundId: playgroundId,
+      },
+    });
+
+    if (isChecked) {
+      // ✅ create only if not already present
+      if (!existing) {
+        await db.starMark.create({
+          data: {
+            userId: user.id,
+            playgroundId,
+            isMarked: true,
           },
-        },
-      });
+        });
+      }
+    } else {
+      // ✅ delete only if exists
+      if (existing) {
+        await db.starMark.delete({
+          where: { id: existing.id },
+        });
+      }
     }
 
     revalidatePath("/dashboard");
     return { success: true, isMarked: isChecked };
   } catch (error) {
-    console.error("Error updating problem:", error);
-    return { success: false, error: "Failed to update problem" };
+    console.error("TOGGLE_STAR_ERROR", error);
+    return { success: false, error: "FAILED_TO_TOGGLE_STAR" };
   }
 };
 
 export const getAllPlaygroundForUser = async () => {
-  // ✅ Ensure DB user exists (and get MongoDB ObjectId)
+  // ✅ Ensure DB user exists (MongoDB ObjectId)
   const user = await ensureUserExists();
 
   if (!user) {
@@ -56,7 +69,16 @@ export const getAllPlaygroundForUser = async () => {
     where: { userId: user.id },
     orderBy: { updatedAt: "desc" },
     include: {
-      user: true, // ✅ THIS IS THE FIX
+      user: true,
+      starMarks: {
+        // ✅ CORRECT relation name
+        where: {
+          userId: user.id,
+        },
+        select: {
+          isMarked: true,
+        },
+      },
     },
   });
 };

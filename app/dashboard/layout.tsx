@@ -24,7 +24,7 @@ export default async function DashboardLayout({
     (item: (typeof playgroundData)[number]) => ({
       id: item.id,
       name: item.title,
-      // starred: item.Starmark?.[0]?.isMarked || false,
+      starred: item.starMarks?.[0]?.isMarked || false,
       icon: technologyIconMap[item.template] || "Code2",
     })
   );
