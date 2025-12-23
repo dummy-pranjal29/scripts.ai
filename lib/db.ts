@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    accelerateUrl: process.env.PRISMA_ACCELERATE_URL!,
+    log: ["error"],
   });
 
 if (process.env.NODE_ENV !== "production") {

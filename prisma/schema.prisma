@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "mongodb"
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -12,38 +13,81 @@ enum UserRole {
   PREMIUM_USER
 }
 
+enum Templates {
+  REACT
+  NEXTJS
+  EXPRESS
+  VUE
+  HONO
+  ANGULAR
+}
+
 model User {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  name String?
-  email String @unique
-  image String?
-  accounts Account[]
-  role UserRole @default(USER)
+  id        String   @id @default(cuid()) @map("_id")
+  name      String?
+  email     String   @unique
+  image     String?
+
+  role      UserRole @default(USER)
+
+  accounts     Account[]
+  playgrounds  Playground[]
+  starredPlaygrounds StarMark[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-
 model Account {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
+  id                 String @id @default(cuid()) @map("_id")
 
-  userId String @map("user_id") @db.ObjectId
+  userId             String
+  user               User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   type               String
   provider           String
-  providerAccountId  String  @map("provider_account_id")
-  refresh_token      String? 
-  access_token       String? 
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
   expires_at         Int?
   token_type         String?
   scope              String?
-  id_token           String? 
+  id_token           String?
   session_state      String?
- 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
- 
+
   @@unique([provider, providerAccountId])
   @@index([userId])
-  // @@map("accounts")
+}
+
+model Playground {
+  id          String     @id @default(cuid()) @map("_id")
+  title       String
+  description String?
+  template    Templates  @default(REACT)
+
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  starMarks   StarMark[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model StarMark {
+  id            String     @id @default(cuid()) @map("_id")
+
+  userId        String
+  playgroundId  String
+
+  isMarked      Boolean    @default(true)
+
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playground    Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime   @default(now())
+
+  @@unique([userId, playgroundId])
+  @@index([userId])
+  @@index([playgroundId])
 }

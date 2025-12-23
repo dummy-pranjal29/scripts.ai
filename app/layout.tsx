@@ -4,8 +4,7 @@ import "./globals.css";
 
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/auth";
-// import { ThemeProvider } from "@/components/providers/theme-providers";
-// import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/providers/theme-providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,31 +23,27 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   const session = await auth();
 
   return (
-    <SessionProvider session={session}>
-      <html lang="en">
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        >
-          {/* <ThemeProvider
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        <SessionProvider session={session}>
+          <ThemeProvider
             attribute="class"
             defaultTheme="system"
             enableSystem
             disableTransitionOnChange
           >
-            <div className="flex flex-col min-h-screen">
-              <Toaster />
-              <div className="flex-1">{children}</div>
-            </div>
-          </ThemeProvider> */}
-          {children}
-        </body>
-      </html>
-    </SessionProvider>
+            {children}
+          </ThemeProvider>
+        </SessionProvider>
+      </body>
+    </html>
   );
 }
