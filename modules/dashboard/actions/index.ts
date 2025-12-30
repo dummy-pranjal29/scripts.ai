@@ -20,7 +20,7 @@ export const toggleStarMarked = async (
   }
 
   try {
-    const existing = await db.starMark.findUnique({
+    const existing = await db.starMarks.findUnique({
       where: {
         userId_playgroundId: {
           userId: user.id,
@@ -32,7 +32,7 @@ export const toggleStarMarked = async (
     if (isChecked) {
       // ✅ create only if not already present
       if (!existing) {
-        await db.starMark.create({
+        await db.starMarks.create({
           data: {
             userId: user.id,
             playgroundId,
@@ -43,7 +43,7 @@ export const toggleStarMarked = async (
     } else {
       // ✅ delete only if exists
       if (existing) {
-        await db.starMark.delete({
+        await db.starMarks.delete({
           where: { id: existing.id },
         });
       }

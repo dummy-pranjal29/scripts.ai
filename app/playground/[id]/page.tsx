@@ -24,15 +24,16 @@ import {
 import LoadingStep from "@/modules/playground/components/loader";
 import { PlaygroundEditor } from "@/modules/playground/components/playground-editor";
 import { TemplateFileTree } from "@/modules/playground/components/playground-explorer";
-import ToggleAI from "@/modules/playground/components/toggle-ai";
+// import ToggleAI from "@/modules/playground/components/toggle-ai";
 import { useAISuggestions } from "@/modules/playground/hooks/useAISuggestion";
 import { useFileExplorer } from "@/modules/playground/hooks/useFileExplorer";
 import { usePlayground } from "@/modules/playground/hooks/usePlayground";
-import { findFilePath } from "@/modules/playground/lib";
 import {
   TemplateFile,
   TemplateFolder,
-} from "@/modules/playground/lib/path-to-json";
+  OpenFile,
+  findFilePath,
+} from "@/modules/playground/lib/template-types";
 import WebContainerPreview from "@/modules/webcontainers/components/webcontainer-preview";
 import { useWebContainer } from "@/modules/webcontainers/hooks/useWebContainer";
 import {
@@ -170,8 +171,10 @@ const MainPlaygroundPage = () => {
   );
 
   const activeFile = openFiles.find((file) => file.id === activeFileId);
+
   const hasUnsavedChanges = openFiles.some((file) => file.hasUnsavedChanges);
 
+  // Ensure activeFile is TemplateFile for explorer
   const handleFileSelect = (file: TemplateFile) => {
     openFile(file);
   };
@@ -182,17 +185,23 @@ const MainPlaygroundPage = () => {
       if (!targetFileId) return;
 
       const fileToSave = openFiles.find((f) => f.id === targetFileId);
-
       if (!fileToSave) return;
 
+      // fileToSave is OpenFile, which extends TemplateFile
       const latestTemplateData = useFileExplorer.getState().templateData;
       if (!latestTemplateData) return;
 
       try {
-        const filePath = findFilePath(fileToSave, latestTemplateData);
+        // Cast fileToSave to TemplateFile for findFilePath
+        const filePath = findFilePath(
+          fileToSave as TemplateFile,
+          latestTemplateData
+        );
         if (!filePath) {
           toast.error(
-            `Could not find path for file: ${fileToSave.filename}.${fileToSave.fileExtension}`
+            `Could not find path for file: ${
+              (fileToSave as TemplateFile).filename
+            }.${(fileToSave as TemplateFile).fileExtension}`
           );
           return;
         }
@@ -201,15 +210,16 @@ const MainPlaygroundPage = () => {
           JSON.stringify(latestTemplateData)
         );
 
-        // @ts-ignore
-        const updateFileContent = (items: any[]) =>
-          // @ts-ignore
+        // Update file content in templateData
+        const updateFileContent = (
+          items: (TemplateFile | TemplateFolder)[]
+        ): (TemplateFile | TemplateFolder)[] =>
           items.map((item) => {
             if ("folderName" in item) {
               return { ...item, items: updateFileContent(item.items) };
             } else if (
-              item.filename === fileToSave.filename &&
-              item.fileExtension === fileToSave.fileExtension
+              item.filename === (fileToSave as TemplateFile).filename &&
+              item.fileExtension === (fileToSave as TemplateFile).fileExtension
             ) {
               return { ...item, content: fileToSave.content };
             }
@@ -223,7 +233,7 @@ const MainPlaygroundPage = () => {
         if (writeFileSync) {
           await writeFileSync(filePath, fileToSave.content);
           lastSyncedContent.current.set(fileToSave.id, fileToSave.content);
-          if (instance && instance.fs) {
+          if (instance && (instance as { fs?: unknown }).fs) {
             await instance.fs.writeFile(filePath, fileToSave.content);
           }
         }
@@ -244,12 +254,16 @@ const MainPlaygroundPage = () => {
         setOpenFiles(updatedOpenFiles);
 
         toast.success(
-          `Saved ${fileToSave.filename}.${fileToSave.fileExtension}`
+          `Saved ${(fileToSave as TemplateFile).filename}.${
+            (fileToSave as TemplateFile).fileExtension
+          }`
         );
       } catch (error) {
         console.error("Error saving file:", error);
         toast.error(
-          `Failed to save ${fileToSave.filename}.${fileToSave.fileExtension}`
+          `Failed to save ${(fileToSave as TemplateFile).filename}.${
+            (fileToSave as TemplateFile).fileExtension
+          }`
         );
         throw error;
       }
@@ -311,11 +325,11 @@ const MainPlaygroundPage = () => {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4">
-        <div className="w-full max-w-md p-6 rounded-lg shadow-sm border">
-          <h2 className="text-xl font-semibold mb-6 text-center">
+        <div className="text-center space-y-4 max-w-md p-6 rounded-lg shadow-sm border">
+          <h2 className="text-lg font-semibold mb-6 text-center">
             Loading Playground
           </h2>
-          <div className="mb-8">
+          <div className="space-y-4 mb-8">
             <LoadingStep
               currentStep={1}
               step={1}
@@ -354,7 +368,7 @@ const MainPlaygroundPage = () => {
         <TemplateFileTree
           data={templateData!}
           onFileSelect={handleFileSelect}
-          selectedFile={activeFile}
+          selectedFile={activeFile as TemplateFile}
           title="File Explorer"
           onAddFile={wrappedHandleAddFile}
           onAddFolder={wrappedHandleAddFolder}
@@ -381,14 +395,17 @@ const MainPlaygroundPage = () => {
 
               <div className="flex items-center gap-1">
                 <Tooltip>
-                  <TooltipTrigger>
+                  <TooltipTrigger asChild>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleSave()}
                       disabled={!activeFile || !activeFile.hasUnsavedChanges}
+                      asChild
                     >
-                      <Save className="h-4 w-4" />
+                      <span>
+                        <Save className="h-4 w-4" />
+                      </span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Save (Ctrl+S)</TooltipContent>
@@ -401,18 +418,15 @@ const MainPlaygroundPage = () => {
                       variant="outline"
                       onClick={handleSaveAll}
                       disabled={!hasUnsavedChanges}
+                      asChild
                     >
-                      <Save className="h-4 w-4" /> All
+                      <span>
+                        <Save className="h-4 w-4" /> All
+                      </span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Save All (Ctrl+Shift+S)</TooltipContent>
                 </Tooltip>
-
-                <ToggleAI
-                  isEnabled={aiSuggestions.isEnabled}
-                  onToggle={aiSuggestions.toggleEnabled}
-                  suggestionLoading={aiSuggestions.isLoading}
-                />
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -446,7 +460,7 @@ const MainPlaygroundPage = () => {
                   >
                     <div className="flex items-center justify-between px-4 py-2">
                       <TabsList className="h-8 bg-transparent p-0">
-                        {openFiles.map((file) => (
+                        {openFiles.map((file: OpenFile) => (
                           <TabsTrigger
                             key={file.id}
                             value={file.id}
@@ -487,6 +501,7 @@ const MainPlaygroundPage = () => {
                     </div>
                   </Tabs>
                 </div>
+
                 <div className="flex-1">
                   <ResizablePanelGroup
                     direction="horizontal"
@@ -534,14 +549,9 @@ const MainPlaygroundPage = () => {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col h-full items-center justify-center text-muted-foreground gap-4">
+              <div className="h-full flex flex-col items-center justify-center">
                 <FileText className="h-16 w-16 text-gray-300" />
-                <div className="text-center">
-                  <p className="text-lg font-medium">No files open</p>
-                  <p className="text-sm text-gray-500">
-                    Select a file from the sidebar to start editing
-                  </p>
-                </div>
+                <p className="text-sm text-muted-foreground">No files open</p>
               </div>
             )}
           </div>

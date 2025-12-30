@@ -51,6 +51,14 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
       const res = await fetch(`/api/template/${id}`);
 
+      if (res.status === 404) {
+        setError(
+          "Template not found for this playground. Please check the template mapping or contact support."
+        );
+        setTemplateData({ folderName: "Root", items: [] });
+        toast.error("Template not found for this playground.");
+        return;
+      }
       if (!res.ok) throw new Error(`Failed to load template: ${res.status}`);
 
       const templateRes = await res.json();

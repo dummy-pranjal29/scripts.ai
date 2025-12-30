@@ -1,12 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-
 import { StarIcon, StarOffIcon } from "lucide-react";
 import type React from "react";
 import { useState, useEffect, forwardRef } from "react";
 import { toast } from "sonner";
 import { toggleStarMarked } from "../actions";
+import { useRouter } from "next/navigation";
 
 interface MarkedToggleButtonProps
   extends React.ComponentPropsWithoutRef<typeof Button> {

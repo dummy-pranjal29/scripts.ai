@@ -570,13 +570,10 @@ export const PlaygroundEditor = ({
         clearTimeout(suggestionTimeoutRef.current);
       }
       if (inlineCompletionProviderRef.current) {
-        inlineCompletionProviderRef.current.dispose();
+        inlineCompletionProviderRef.current.dispose?.();
         inlineCompletionProviderRef.current = null;
       }
-      if (tabCommandRef.current) {
-        tabCommandRef.current.dispose();
-        tabCommandRef.current = null;
-      }
+      tabCommandRef.current = null;
     };
   }, []);
 

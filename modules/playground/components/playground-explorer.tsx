@@ -287,10 +287,16 @@ function TemplateNode({
           <SidebarMenuButton
             isActive={isSelected}
             onClick={() => onFileSelect?.(file)}
-            className="flex-1"
+            className="flex-1 flex items-center gap-2"
           >
             <File className="h-4 w-4 mr-2 shrink-0" />
             <span>{fileName}</span>
+            {file.hasUnsavedChanges && (
+              <span className="ml-2 relative flex h-2 w-2">
+                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-orange-500 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+              </span>
+            )}
           </SidebarMenuButton>
 
           <DropdownMenu>

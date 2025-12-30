@@ -361,7 +361,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
     const { templateData, openFiles, activeFileId } = get();
     if (!templateData) return;
 
-    // Generate old and new file IDs using the same logic as openFile
+    // Generate old and new file IDs using the same logic as in openFile
     const oldFileId = generateFileId(file, templateData);
     const newFile = {
       ...file,
