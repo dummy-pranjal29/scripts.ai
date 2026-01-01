@@ -85,6 +85,16 @@ const MainPlaygroundPage = () => {
     updateFileContent,
   } = useFileExplorer();
 
+  // Wrap updateFileContent in useCallback to avoid setState during render
+  const handleContentChange = useCallback(
+    (value: string) => {
+      if (activeFileId) {
+        updateFileContent(activeFileId, value);
+      }
+    },
+    [activeFileId, updateFileContent]
+  );
+
   const terminalRef = useRef<TerminalRef>(null);
 
   const handleTerminalData = useCallback((data: string) => {
@@ -534,9 +544,7 @@ const MainPlaygroundPage = () => {
                       <PlaygroundEditor
                         activeFile={activeFile}
                         content={activeFile?.content || ""}
-                        onContentChange={(value) =>
-                          activeFileId && updateFileContent(activeFileId, value)
-                        }
+                        onContentChange={handleContentChange}
                         suggestion={aiSuggestions.suggestion}
                         suggestionLoading={aiSuggestions.isLoading}
                         suggestionPosition={aiSuggestions.position}

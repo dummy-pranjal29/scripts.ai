@@ -363,20 +363,39 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
               fitAddonInstance &&
               terminal.element &&
               terminal.cols > 0 &&
-              terminal.rows > 0
+              terminal.rows > 0 &&
+              terminal.buffer &&
+              terminal.buffer.active
             ) {
-              fitAddonInstance.fit();
+              // Additional check to ensure the terminal element has dimensions
+              const rect = terminal.element.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) {
+                fitAddonInstance.fit();
+              } else {
+                // If element has no dimensions, retry after a short delay
+                setTimeout(performFit, 50);
+              }
             } else {
               // If not ready, retry after a short delay
               setTimeout(performFit, 50);
             }
           } catch (error) {
             console.warn("Fit addon error:", error);
-            // Retry once more after a longer delay
+            // Retry once more after a longer delay with additional checks
             setTimeout(() => {
               try {
-                if (fitAddonInstance && terminal.element) {
-                  fitAddonInstance.fit();
+                if (
+                  fitAddonInstance &&
+                  terminal.element &&
+                  terminal.cols > 0 &&
+                  terminal.rows > 0 &&
+                  terminal.buffer &&
+                  terminal.buffer.active
+                ) {
+                  const rect = terminal.element.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) {
+                    fitAddonInstance.fit();
+                  }
                 }
               } catch (retryError) {
                 console.warn("Fit addon retry failed:", retryError);

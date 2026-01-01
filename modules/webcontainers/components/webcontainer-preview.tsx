@@ -471,18 +471,105 @@ const WebContainerPreview = ({
           );
         }
 
+        // Read package.json to determine project type and set appropriate timeout
+        let serverTimeoutDuration = 60000; // Default 1 minute
+        try {
+          const packageJsonContent = await instance.fs.readFile(
+            "package.json",
+            "utf8"
+          );
+          const packageData = JSON.parse(packageJsonContent);
+
+          // Adjust timeout based on project type
+          if (
+            packageData.dependencies?.react ||
+            packageData.dependencies?.["react-dom"]
+          ) {
+            serverTimeoutDuration = 120000; // 2 minutes for React projects
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                "📱 React project detected, using 2-minute timeout\r\n"
+              );
+            }
+          } else if (packageData.dependencies?.vue) {
+            serverTimeoutDuration = 90000; // 1.5 minutes for Vue projects
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                "💚 Vue project detected, using 1.5-minute timeout\r\n"
+              );
+            }
+          } else if (packageData.dependencies?.angular) {
+            serverTimeoutDuration = 180000; // 3 minutes for Angular projects
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                "🅰️ Angular project detected, using 3-minute timeout\r\n"
+              );
+            }
+          } else if (packageData.dependencies?.next) {
+            serverTimeoutDuration = 90000; // 1.5 minutes for Next.js projects
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                "▲ Next.js project detected, using 1.5-minute timeout\r\n"
+              );
+            }
+          } else if (packageData.dependencies?.express) {
+            serverTimeoutDuration = 30000; // 30 seconds for Express projects (usually faster)
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                "🟢 Express project detected, using 30-second timeout\r\n"
+              );
+            }
+          } else {
+            serverTimeoutDuration = 90000; // 1.5 minutes for other projects
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                "📦 Generic project detected, using 1.5-minute timeout\r\n"
+              );
+            }
+          }
+        } catch (e) {
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              "⚠️ Could not determine project type, using default timeout\r\n"
+            );
+          }
+        }
+
         const startProcess = await instance.spawn("npm", ["run", "start"]);
 
-        // Add timeout for server startup (1 minute)
+        // Add progress indicator for long-running processes
+        let progressIndicator = 0;
+        const progressInterval = setInterval(() => {
+          progressIndicator++;
+          if (terminalRef.current?.writeToTerminal && !isSetupComplete) {
+            const dots = ".".repeat((progressIndicator % 4) + 1);
+            terminalRef.current.writeToTerminal(
+              `⏳ Server starting${dots}\r\n`
+            );
+          }
+        }, 10000); // Show progress every 10 seconds
+
+        // Add timeout for server startup with adaptive duration
         const serverTimeout = setTimeout(() => {
+          clearInterval(progressInterval);
           if (startProcess.kill) {
             startProcess.kill();
-            throw new Error("Server startup timed out after 1 minute");
+            const timeoutMinutes =
+              Math.round((serverTimeoutDuration / 60000) * 10) / 10;
+            throw new Error(
+              `Server startup timed out after ${timeoutMinutes} minute(s). This might be due to:\n` +
+                `• Large dependencies taking time to compile\n` +
+                `• Complex build processes\n` +
+                `• Insufficient resources\n` +
+                `• Issues with the project configuration\n\n` +
+                `Try checking the terminal output above for more details.`
+            );
           }
-        }, 60000);
+        }, serverTimeoutDuration);
 
         instance.on("server-ready", (port: number, url: string) => {
           clearTimeout(serverTimeout);
+          clearInterval(progressInterval);
           if (terminalRef.current?.writeToTerminal) {
             terminalRef.current.writeToTerminal(
               `🌐 Server ready at ${url}\r\n`
