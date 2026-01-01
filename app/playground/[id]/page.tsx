@@ -24,7 +24,7 @@ import {
 import LoadingStep from "@/modules/playground/components/loader";
 import { PlaygroundEditor } from "@/modules/playground/components/playground-editor";
 import { TemplateFileTree } from "@/modules/playground/components/playground-explorer";
-// import ToggleAI from "@/modules/playground/components/toggle-ai";
+import ToggleAI from "@/modules/playground/components/toggle-ai";
 import { useAISuggestions } from "@/modules/playground/hooks/useAISuggestion";
 import { useFileExplorer } from "@/modules/playground/hooks/useFileExplorer";
 import { usePlayground } from "@/modules/playground/hooks/usePlayground";
@@ -54,6 +54,7 @@ import React, {
   useState,
 } from "react";
 import { toast } from "sonner";
+import type { TerminalRef } from "@/modules/webcontainers/components/terminal";
 
 const MainPlaygroundPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -84,14 +85,24 @@ const MainPlaygroundPage = () => {
     updateFileContent,
   } = useFileExplorer();
 
+  const terminalRef = useRef<TerminalRef>(null);
+
+  const handleTerminalData = useCallback((data: string) => {
+    if (terminalRef.current?.writeToTerminal) {
+      terminalRef.current.writeToTerminal(data);
+    }
+  }, []);
+
   const {
     serverUrl,
     isLoading: containerLoading,
     error: containerError,
     instance,
     writeFileSync,
-    // @ts-ignore
-  } = useWebContainer({ templateData });
+  } = useWebContainer({
+    templateData: templateData!,
+    onTerminalData: handleTerminalData,
+  });
 
   const lastSyncedContent = useRef<Map<string, string>>(new Map());
 
@@ -238,8 +249,8 @@ const MainPlaygroundPage = () => {
           }
         }
 
-        const newTemplateData = await saveTemplateData(updatedTemplateData);
-        setTemplateData(newTemplateData || updatedTemplateData);
+        await saveTemplateData(updatedTemplateData);
+        setTemplateData(updatedTemplateData);
         // Update open files
         const updatedOpenFiles = openFiles.map((f) =>
           f.id === targetFileId
@@ -394,6 +405,14 @@ const MainPlaygroundPage = () => {
               </div>
 
               <div className="flex items-center gap-1">
+                <ToggleAI
+                  isEnabled={aiSuggestions.isEnabled}
+                  onToggle={() => aiSuggestions.toggleEnabled()}
+                  suggestionLoading={aiSuggestions.isLoading}
+                  loadingProgress={0}
+                  activeFeature={undefined}
+                />
+
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -471,6 +490,10 @@ const MainPlaygroundPage = () => {
                               <span>
                                 {file.filename}.{file.fileExtension}
                               </span>
+                              {!file.hasUnsavedChanges &&
+                                file.id === activeFileId && (
+                                  <span className="h-2 w-2 rounded-full bg-green-500" />
+                                )}
                               {file.hasUnsavedChanges && (
                                 <span className="h-2 w-2 rounded-full bg-orange-500" />
                               )}
@@ -517,8 +540,8 @@ const MainPlaygroundPage = () => {
                         suggestion={aiSuggestions.suggestion}
                         suggestionLoading={aiSuggestions.isLoading}
                         suggestionPosition={aiSuggestions.position}
-                        onAcceptSuggestion={(editor, monaco) =>
-                          aiSuggestions.acceptSuggestion(editor, monaco)
+                        onAcceptSuggestion={(editor) =>
+                          aiSuggestions.acceptSuggestion(editor)
                         }
                         onRejectSuggestion={(editor) =>
                           aiSuggestions.rejectSuggestion(editor)

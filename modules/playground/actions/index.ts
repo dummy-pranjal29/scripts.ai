@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { TemplateFolder } from "../lib/path-to-json";
+import { TemplateFolder } from "../lib/template-types";
 import { currentUser } from "@/modules/auth/actions";
 
 export const getPlaygroundById = async (id: string) => {
@@ -10,7 +10,7 @@ export const getPlaygroundById = async (id: string) => {
       where: { id },
       select: {
         title: true,
-        templateFiles: {
+        templateFile: {
           select: {
             content: true,
           },

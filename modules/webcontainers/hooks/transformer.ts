@@ -67,10 +67,15 @@ export function transformToWebContainerFormat(template: {
   folderName: string;
   items: OriginalTemplateItem[];
 }): WebContainerFileSystem {
+  console.log("🔄 Transforming template:", template);
+
   // Convert: original TemplateFolder items to TransformableItem format
   const convertedItems: TransformableItem[] = template.items.map(
     convertToTransformableItem
   );
+
+  console.log("📝 Converted items:", convertedItems);
+
   function processItem(
     item: TransformableItem
   ): WebContainerFile | WebContainerDirectory {
@@ -100,6 +105,7 @@ export function transformToWebContainerFormat(template: {
 
   const result: WebContainerFileSystem = {};
 
+  // Flatten: put all items at the root
   convertedItems.forEach((item) => {
     const key = item.fileExtension
       ? `${item.filename}.${item.fileExtension}`

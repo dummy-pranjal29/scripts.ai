@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
-import type { TemplateFolder } from "../lib/path-to-json";
+import type { TemplateFolder } from "../lib/template-types";
 import { getPlaygroundById, SaveUpdatedCode } from "../actions";
 
 interface PlaygroundData {
@@ -36,9 +36,8 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
       const data = await getPlaygroundById(id);
 
-      //   @ts-ignore
       setPlaygroundData(data);
-      const rawContent = data?.templateFiles?.[0]?.content;
+      const rawContent = data?.templateFile?.content;
 
       if (typeof rawContent === "string") {
         const parsedContent = JSON.parse(rawContent);

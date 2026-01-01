@@ -1,66 +1,183 @@
+import { isLastDayOfMonth } from "date-fns";
 import { useState, useCallback } from "react";
+import * as monaco from "monaco-editor";
 
-interface AISuggestionState {
-  isEnabled: boolean;
-  isLoading: boolean;
+interface AISuggestionsState {
   suggestion: string | null;
+  isLoading: boolean;
   position: { line: number; column: number } | null;
+  decoration: string[];
+  isEnabled: boolean;
 }
 
-interface AISuggestionActions {
+interface UseAISuggestionsReturn extends AISuggestionsState {
   toggleEnabled: () => void;
-  fetchSuggestion: (type: string, editor: unknown) => void;
-  acceptSuggestion: (editor: unknown, monaco: unknown) => void;
-  rejectSuggestion: (editor: unknown) => void;
+  fetchSuggestion: (
+    type: string,
+    editor: monaco.editor.IStandaloneCodeEditor
+  ) => Promise<void>;
+  acceptSuggestion: (editor: monaco.editor.IStandaloneCodeEditor) => void;
+  rejectSuggestion: (editor: monaco.editor.IStandaloneCodeEditor) => void;
+  clearSuggestion: (editor: monaco.editor.IStandaloneCodeEditor) => void;
 }
 
-export const useAISuggestions = (): AISuggestionState & AISuggestionActions => {
-  const [isEnabled, setIsEnabled] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [suggestion, setSuggestion] = useState<string | null>(null);
-  const [position, setPosition] = useState<{
-    line: number;
-    column: number;
-  } | null>(null);
+export const useAISuggestions = (): UseAISuggestionsReturn => {
+  const [state, setState] = useState<AISuggestionsState>({
+    suggestion: null,
+    isLoading: false,
+    position: null,
+    decoration: [],
+    isEnabled: true,
+  });
 
   const toggleEnabled = useCallback(() => {
-    setIsEnabled((prev) => !prev);
+    setState((prev) => ({ ...prev, isEnabled: !prev.isEnabled }));
   }, []);
 
-  const fetchSuggestion = useCallback((type: string, editor: unknown) => {
-    // Placeholder implementation - replace with actual AI integration
-    setIsLoading(true);
-    setSuggestion("AI suggestion placeholder");
-    setPosition({ line: 1, column: 1 });
-    setIsLoading(false);
-  }, []);
+  const fetchSuggestion = useCallback(
+    async (type: string, editor: monaco.editor.IStandaloneCodeEditor) => {
+      setState((currentState) => {
+        if (!currentState.isEnabled) {
+          return currentState;
+        }
 
-  const acceptSuggestion = useCallback(
-    (editor: unknown, monaco: unknown) => {
-      // Placeholder implementation - replace with actual AI integration
-      if (suggestion) {
-        // Apply suggestion to editor
-        setSuggestion(null);
-        setPosition(null);
-      }
+        if (!editor) {
+          return currentState;
+        }
+
+        const model = editor.getModel();
+        const cursorPosition = editor.getPosition();
+
+        if (!model || !cursorPosition) {
+          return currentState;
+        }
+
+        const newState = { ...currentState, isLoading: true };
+
+        (async () => {
+          try {
+            const payload = {
+              fileContent: model.getValue(),
+              cursorLine: cursorPosition.lineNumber - 1,
+              cursorColumn: cursorPosition.column - 1,
+              suggestionType: type,
+            };
+
+            const response = await fetch("/api/code-completion", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+              throw new Error(`API responded with status ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.suggestion) {
+              const suggestionText = data.suggestion.trim();
+              setState((prev) => ({
+                ...prev,
+                suggestion: suggestionText,
+                position: {
+                  line: cursorPosition.lineNumber,
+                  column: cursorPosition.column,
+                },
+                isLoading: false,
+              }));
+            } else {
+              console.warn("No suggestion received from API.");
+              setState((prev) => ({ ...prev, isLoading: false }));
+            }
+          } catch (error) {
+            console.error("Error fetching code suggestion:", error);
+            setState((prev) => ({ ...prev, isLoading: false }));
+          }
+        })();
+
+        return newState;
+      });
     },
-    [suggestion]
+    []
   );
 
-  const rejectSuggestion = useCallback((editor: unknown) => {
-    // Placeholder implementation - replace with actual AI integration
-    setSuggestion(null);
-    setPosition(null);
-  }, []);
+  const acceptSuggestion = useCallback(
+    (editor: monaco.editor.IStandaloneCodeEditor) => {
+      setState((currentState) => {
+        if (!currentState.suggestion || !currentState.position || !editor) {
+          return currentState;
+        }
+
+        const { line, column } = currentState.position;
+        const sanitizedSuggestion = currentState.suggestion.replace(
+          /^\d+:\s*/gm,
+          ""
+        );
+
+        editor.executeEdits("", [
+          {
+            range: new monaco.Range(line, column, line, column),
+            text: sanitizedSuggestion,
+            forceMoveMarkers: true,
+          },
+        ]);
+
+        if (editor && currentState.decoration.length > 0) {
+          editor.deltaDecorations(currentState.decoration, []);
+        }
+
+        return {
+          ...currentState,
+          suggestion: null,
+          position: null,
+          decoration: [],
+        };
+      });
+    },
+    []
+  );
+
+  const rejectSuggestion = useCallback(
+    (editor: monaco.editor.IStandaloneCodeEditor) => {
+      setState((currentState) => {
+        if (editor && currentState.decoration.length > 0) {
+          editor.deltaDecorations(currentState.decoration, []);
+        }
+
+        return {
+          ...currentState,
+          suggestion: null,
+          position: null,
+          decoration: [],
+        };
+      });
+    },
+    []
+  );
+
+  const clearSuggestion = useCallback(
+    (editor: monaco.editor.IStandaloneCodeEditor) => {
+      setState((currentState) => {
+        if (editor && currentState.decoration.length > 0) {
+          editor.deltaDecorations(currentState.decoration, []);
+        }
+        return {
+          ...currentState,
+          suggestion: null,
+          position: null,
+          decoration: [],
+        };
+      });
+    },
+    []
+  );
 
   return {
-    isEnabled,
-    isLoading,
-    suggestion,
-    position,
+    ...state,
     toggleEnabled,
     fetchSuggestion,
     acceptSuggestion,
     rejectSuggestion,
+    clearSuggestion,
   };
 };

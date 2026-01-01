@@ -1,4 +1,4 @@
-import { TemplateFile, TemplateFolder } from "./path-to-json";
+import { TemplateFile, TemplateFolder } from "./template-types";
 
 export function findFilePath(
   file: TemplateFile,

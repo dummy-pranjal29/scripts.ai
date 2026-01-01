@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 
-import { TemplateFile, TemplateFolder } from "../lib/path-to-json";
+import { TemplateFile, TemplateFolder } from "../lib/template-types";
+import type { WebContainer } from "@webcontainer/api";
 
 import { generateFileId } from "../lib";
 
@@ -36,14 +37,14 @@ interface FileExplorerState {
     newFile: TemplateFile,
     parentPath: string,
     writeFileSync: (filePath: string, content: string) => Promise<void>,
-    instance: any,
+    instance: WebContainer | null,
     saveTemplateData: (data: TemplateFolder) => Promise<void>
   ) => Promise<void>;
 
   handleAddFolder: (
     newFolder: TemplateFolder,
     parentPath: string,
-    instance: any,
+    instance: WebContainer | null,
     saveTemplateData: (data: TemplateFolder) => Promise<void>
   ) => Promise<void>;
 
@@ -74,7 +75,6 @@ interface FileExplorerState {
   updateFileContent: (fileId: string, content: string) => void;
 }
 
-// @ts-ignore
 export const useFileExplorer = create<FileExplorerState>((set, get) => ({
   templateData: null,
   playgroundId: "",
@@ -119,7 +119,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
     const { openFiles, activeFileId } = get();
     const newFiles = openFiles.filter((f) => f.id !== fileId);
 
-    // If we're closing the active file, switch to another file or clear active
+    // If we're closing active file, switch to another file or clear active
     let newActiveFileId = activeFileId;
     let newEditorContent = get().editorContent;
 
@@ -323,7 +323,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
       ) => {
         folder.items.forEach((item) => {
           if ("filename" in item) {
-            // Generate the correct file ID using the same logic as openFile
+            // Generate the correct file ID using the same logic as in openFile
             const fileId = generateFileId(item, templateData);
             get().closeFile(fileId);
           } else if ("folderName" in item) {

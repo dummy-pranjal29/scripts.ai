@@ -7,18 +7,26 @@ import React, {
   useCallback,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react";
+import type { Terminal } from "@xterm/xterm"; // Import Terminal type
+import type { FitAddon } from "xterm-addon-fit";
+import type { SearchAddon } from "xterm-addon-search";
+import type { WebContainer as WebContainerAPI } from "@webcontainer/api";
 // Dynamically import xterm and addons in useEffect to avoid SSR errors
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Copy, Trash2, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Use the actual WebContainer type from API
+type WebContainerInstance = WebContainerAPI;
+
 interface TerminalProps {
   webcontainerUrl?: string;
   className?: string;
   theme?: "dark" | "light";
-  webContainerInstance?: any;
+  webContainerInstance?: WebContainerInstance | null;
 }
 
 // Define the methods that will be exposed through the ref
@@ -29,45 +37,11 @@ export interface TerminalRef {
 }
 
 const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
-  (
-    { webcontainerUrl, className, theme = "dark", webContainerInstance },
-    ref
-  ) => {
+  ({ className, theme = "dark", webContainerInstance }, ref) => {
     const terminalRef = useRef<HTMLDivElement>(null);
-    const term = useRef<any>(null);
-    const fitAddon = useRef<any>(null);
-    const searchAddon = useRef<any>(null);
-    useEffect(() => {
-      let isMounted = true;
-      async function setupTerminal() {
-        if (!terminalRef.current) return;
-        const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { SearchAddon }] =
-          await Promise.all([
-            import("xterm"),
-            import("xterm-addon-fit"),
-            import("xterm-addon-web-links"),
-            import("xterm-addon-search"),
-          ]);
-        await import("xterm/css/xterm.css");
-        if (!isMounted) return;
-        term.current = new Terminal({
-          theme: terminalThemes[theme],
-          fontSize: 14,
-          cursorBlink: true,
-          scrollback: 1000,
-        });
-        fitAddon.current = new FitAddon();
-        searchAddon.current = new SearchAddon();
-        term.current.loadAddon(fitAddon.current);
-        term.current.loadAddon(new WebLinksAddon());
-        term.current.loadAddon(searchAddon.current);
-        // ...existing code to attach terminal to DOM, etc...
-      }
-      setupTerminal();
-      return () => {
-        isMounted = false;
-      };
-    }, [theme]);
+    const term = useRef<Terminal | null>(null);
+    const fitAddon = useRef<FitAddon | null>(null);
+    const searchAddon = useRef<SearchAddon | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [showSearch, setShowSearch] = useState(false);
@@ -77,57 +51,65 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
     const cursorPosition = useRef<number>(0);
     const commandHistory = useRef<string[]>([]);
     const historyIndex = useRef<number>(-1);
-    const currentProcess = useRef<any>(null);
-    const shellProcess = useRef<any>(null);
-
-    const terminalThemes = {
-      dark: {
-        background: "#09090B",
-        foreground: "#FAFAFA",
-        cursor: "#FAFAFA",
-        cursorAccent: "#09090B",
-        selection: "#27272A",
-        black: "#18181B",
-        red: "#EF4444",
-        green: "#22C55E",
-        yellow: "#EAB308",
-        blue: "#3B82F6",
-        magenta: "#A855F7",
-        cyan: "#06B6D4",
-        white: "#F4F4F5",
-        brightBlack: "#3F3F46",
-        brightRed: "#F87171",
-        brightGreen: "#4ADE80",
-        brightYellow: "#FDE047",
-        brightBlue: "#60A5FA",
-        brightMagenta: "#C084FC",
-        brightCyan: "#22D3EE",
-        brightWhite: "#FFFFFF",
-      },
-      light: {
-        background: "#FFFFFF",
-        foreground: "#18181B",
-        cursor: "#18181B",
-        cursorAccent: "#FFFFFF",
-        selection: "#E4E4E7",
-        black: "#18181B",
-        red: "#DC2626",
-        green: "#16A34A",
-        yellow: "#CA8A04",
-        blue: "#2563EB",
-        magenta: "#9333EA",
-        cyan: "#0891B2",
-        white: "#F4F4F5",
-        brightBlack: "#71717A",
-        brightRed: "#EF4444",
-        brightGreen: "#22C55E",
-        brightYellow: "#EAB308",
-        brightBlue: "#3B82F6",
-        brightMagenta: "#A855F7",
-        brightCyan: "#06B6D4",
-        brightWhite: "#FAFAFA",
-      },
+    // Define a type for the process object that includes the kill method
+    type TerminalProcess = {
+      kill: () => void;
+      // Add other properties if needed
     };
+    const currentProcess = useRef<TerminalProcess | null>(null);
+    const shellProcess = useRef<TerminalProcess | null>(null);
+
+    const terminalThemes = useMemo(
+      () => ({
+        dark: {
+          background: "#09090B",
+          foreground: "#FAFAFA",
+          cursor: "#FAFAFA",
+          cursorAccent: "#09090B",
+          selection: "#27272A",
+          black: "#18181B",
+          red: "#EF4444",
+          green: "#22C55E",
+          yellow: "#EAB308",
+          blue: "#3B82F6",
+          magenta: "#A855F7",
+          cyan: "#06B6D4",
+          white: "#F4F4F5",
+          brightBlack: "#3F3F46",
+          brightRed: "#F87171",
+          brightGreen: "#4ADE80",
+          brightYellow: "#FDE047",
+          brightBlue: "#60A5FA",
+          brightMagenta: "#C084FC",
+          brightCyan: "#22D3EE",
+          brightWhite: "#FFFFFF",
+        },
+        light: {
+          background: "#FFFFFF",
+          foreground: "#18181B",
+          cursor: "#18181B",
+          cursorAccent: "#FFFFFF",
+          selection: "#E4E4E7",
+          black: "#18181B",
+          red: "#DC2626",
+          green: "#16A34A",
+          yellow: "#CA8A04",
+          blue: "#2563EB",
+          magenta: "#9333EA",
+          cyan: "#0891B2",
+          white: "#F4F4F5",
+          brightBlack: "#71717A",
+          brightRed: "#EF4444",
+          brightGreen: "#22C55E",
+          brightYellow: "#EAB308",
+          brightBlue: "#3B82F6",
+          brightMagenta: "#A855F7",
+          brightCyan: "#06B6D4",
+          brightWhite: "#FAFAFA",
+        },
+      }),
+      []
+    );
 
     const writePrompt = useCallback(() => {
       if (term.current) {
@@ -216,12 +198,12 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
           );
 
           // Wait for process to complete
-          const exitCode = await process.exit;
+          await process.exit;
           currentProcess.current = null;
 
           // Show new prompt
           writePrompt();
-        } catch (error) {
+        } catch {
           if (term.current) {
             term.current.writeln(`\r\nCommand not found: ${command}`);
             writePrompt();
@@ -328,12 +310,14 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
       (async () => {
         const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { SearchAddon }] =
           await Promise.all([
-            import("xterm"),
+            import("@xterm/xterm"),
             import("xterm-addon-fit"),
             import("xterm-addon-web-links"),
             import("xterm-addon-search"),
           ]);
-        await import("xterm/css/xterm.css");
+        // Import CSS with TypeScript expect error comment
+        // @ts-expect-error - CSS imports don't have type declarations
+        await import("@xterm/xterm/css/xterm.css");
 
         const terminal = new Terminal({
           cursorBlink: true,
@@ -357,7 +341,7 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
         terminal.loadAddon(webLinksAddon);
         terminal.loadAddon(searchAddonInstance);
 
-        terminal.open(terminalRef.current);
+        terminal.open(terminalRef.current!);
 
         fitAddon.current = fitAddonInstance;
         searchAddon.current = searchAddonInstance;
@@ -366,17 +350,45 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
         // Handle terminal input
         terminal.onData(handleTerminalInput);
 
-        // Initial fit
-        setTimeout(() => {
-          fitAddonInstance.fit();
-        }, 100);
-
         // Welcome message
         terminal.writeln("🚀 WebContainer Terminal");
         terminal.writeln("Type 'help' for available commands");
         writePrompt();
+
+        // Improved fit function with proper error handling and timing
+        const performFit = () => {
+          try {
+            // Check if terminal and its core are properly initialized
+            if (
+              fitAddonInstance &&
+              terminal.element &&
+              terminal.cols > 0 &&
+              terminal.rows > 0
+            ) {
+              fitAddonInstance.fit();
+            } else {
+              // If not ready, retry after a short delay
+              setTimeout(performFit, 50);
+            }
+          } catch (error) {
+            console.warn("Fit addon error:", error);
+            // Retry once more after a longer delay
+            setTimeout(() => {
+              try {
+                if (fitAddonInstance && terminal.element) {
+                  fitAddonInstance.fit();
+                }
+              } catch (retryError) {
+                console.warn("Fit addon retry failed:", retryError);
+              }
+            }, 200);
+          }
+        };
+
+        // Start fitting after ensuring DOM is ready
+        setTimeout(performFit, 100);
       })();
-    }, [theme, handleTerminalInput, writePrompt]);
+    }, [theme, handleTerminalInput, writePrompt, terminalThemes]);
 
     const connectToWebContainer = useCallback(async () => {
       if (!webContainerInstance || !term.current) return;
@@ -447,12 +459,19 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
     useEffect(() => {
       initializeTerminal();
 
-      // Handle resize
+      // Handle resize with improved error handling
       const resizeObserver = new ResizeObserver(() => {
-        if (fitAddon.current) {
-          setTimeout(() => {
-            fitAddon.current?.fit();
-          }, 100);
+        try {
+          if (
+            fitAddon.current &&
+            term.current &&
+            term.current.cols > 0 &&
+            term.current.rows > 0
+          ) {
+            fitAddon.current.fit();
+          }
+        } catch (error) {
+          console.warn("Resize fit error:", error);
         }
       });
 
@@ -462,11 +481,12 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
 
       return () => {
         resizeObserver.disconnect();
+        const currentShellProcess = shellProcess.current;
         if (currentProcess.current) {
           currentProcess.current.kill();
         }
-        if (shellProcess.current) {
-          shellProcess.current.kill();
+        if (currentShellProcess) {
+          currentShellProcess.kill();
         }
         if (term.current) {
           term.current.dispose();

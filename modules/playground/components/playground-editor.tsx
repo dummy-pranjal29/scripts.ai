@@ -2,7 +2,9 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import Editor, { type Monaco } from "@monaco-editor/react";
-import { TemplateFile } from "../lib/path-to-json";
+import * as MonacoNamespace from "monaco-editor";
+import type { editor as MonacoEditor } from "monaco-editor";
+import { TemplateFile } from "../lib/template-types";
 import {
   configureMonaco,
   defaultEditorOptions,
@@ -16,9 +18,15 @@ interface PlaygroundEditorProps {
   suggestion: string | null;
   suggestionLoading: boolean;
   suggestionPosition: { line: number; column: number } | null;
-  onAcceptSuggestion: (editor: any, monaco: any) => void;
-  onRejectSuggestion: (editor: any) => void;
-  onTriggerSuggestion: (type: string, editor: any) => void;
+  onAcceptSuggestion: (
+    editor: MonacoEditor.IStandaloneCodeEditor,
+    monaco: Monaco
+  ) => void;
+  onRejectSuggestion: (editor: MonacoEditor.IStandaloneCodeEditor) => void;
+  onTriggerSuggestion: (
+    type: string,
+    editor: MonacoEditor.IStandaloneCodeEditor
+  ) => void;
 }
 
 export const PlaygroundEditor = ({
@@ -32,9 +40,10 @@ export const PlaygroundEditor = ({
   onRejectSuggestion,
   onTriggerSuggestion,
 }: PlaygroundEditorProps) => {
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
-  const inlineCompletionProviderRef = useRef<any>(null);
+  const inlineCompletionProviderRef =
+    useRef<MonacoNamespace.IDisposable | null>(null);
   const currentSuggestionRef = useRef<{
     text: string;
     position: { line: number; column: number };
@@ -43,7 +52,7 @@ export const PlaygroundEditor = ({
   const isAcceptingSuggestionRef = useRef(false);
   const suggestionAcceptedRef = useRef(false);
   const suggestionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const tabCommandRef = useRef<any>(null);
+  const tabCommandRef = useRef<MonacoNamespace.IDisposable | null>(null);
 
   // Generate unique ID for each suggestion
   const generateSuggestionId = () =>
@@ -54,10 +63,10 @@ export const PlaygroundEditor = ({
     (monaco: Monaco) => {
       return {
         provideInlineCompletions: async (
-          model: any,
-          position: any,
-          context: any,
-          token: any
+          model: MonacoEditor.ITextModel,
+          position: MonacoNamespace.Position,
+          context: MonacoNamespace.languages.InlineCompletionContext,
+          token: MonacoNamespace.CancellationToken
         ) => {
           console.log("provideInlineCompletions called", {
             hasSuggestion: !!suggestion,
@@ -139,7 +148,7 @@ export const PlaygroundEditor = ({
             ],
           };
         },
-        freeInlineCompletions: (completions: any) => {
+        freeInlineCompletions: (completions: unknown) => {
           console.log("freeInlineCompletions called");
         },
       };
@@ -205,6 +214,7 @@ export const PlaygroundEditor = ({
 
       // Verify we're still at the suggestion position
       if (
+        !currentPosition ||
         currentPosition.lineNumber !== suggestionPos.line ||
         currentPosition.column < suggestionPos.column ||
         currentPosition.column > suggestionPos.column + 5
@@ -280,6 +290,7 @@ export const PlaygroundEditor = ({
     const position = editorRef.current.getPosition();
     const suggestion = currentSuggestionRef.current;
 
+    if (!position) return false;
     return (
       position.lineNumber === suggestion.position.line &&
       position.column >= suggestion.position.column &&
@@ -352,7 +363,10 @@ export const PlaygroundEditor = ({
     createInlineCompletionProvider,
   ]);
 
-  const handleEditorDidMount = (editor: any, monaco: Monaco) => {
+  const handleEditorDidMount = (
+    editor: MonacoEditor.IStandaloneCodeEditor,
+    monaco: Monaco
+  ) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
     console.log("Editor instance mounted:", !!editorRef.current);
@@ -377,8 +391,16 @@ export const PlaygroundEditor = ({
         comments: false,
         strings: false,
       },
+      // Use a valid value for wordBasedSuggestions
+      wordBasedSuggestions: "currentDocument",
       // Smooth cursor
       cursorSmoothCaretAnimation: "on",
+      // Fix: Use a valid value for occurrencesHighlight
+      occurrencesHighlight: "multiFile",
+      // FIX: Ensure foldingStrategy is valid
+      foldingStrategy: "auto", // or "indentation"
+      // FIX: Ensure showFoldingControls is a valid value
+      showFoldingControls: "mouseover",
     });
 
     configureMonaco(monaco);
@@ -394,7 +416,7 @@ export const PlaygroundEditor = ({
       tabCommandRef.current.dispose();
     }
 
-    tabCommandRef.current = editor.addCommand(
+    const tabCommand = editor.addCommand(
       monaco.KeyCode.Tab,
       () => {
         console.log("TAB PRESSED", {
@@ -443,6 +465,11 @@ export const PlaygroundEditor = ({
       // CRITICAL: Use specific context to override Monaco's built-in Tab handling
       "editorTextFocus && !editorReadonly && !suggestWidgetVisible"
     );
+    // Only assign if tabCommand is an object with a dispose method (IDisposable)
+    tabCommandRef.current =
+      tabCommand && typeof tabCommand === "object" && "dispose" in tabCommand
+        ? (tabCommand as MonacoNamespace.IDisposable)
+        : null;
 
     // Escape to reject
     editor.addCommand(monaco.KeyCode.Escape, () => {
@@ -454,7 +481,7 @@ export const PlaygroundEditor = ({
     });
 
     // Listen for cursor position changes to hide suggestions when moving away
-    editor.onDidChangeCursorPosition((e: any) => {
+    editor.onDidChangeCursorPosition((e: MonacoEditor.ICursorPositionChangedEvent) => {
       if (isAcceptingSuggestionRef.current) return;
 
       const newPosition = e.position;
@@ -490,63 +517,65 @@ export const PlaygroundEditor = ({
     });
 
     // Listen for content changes to detect manual typing over suggestions
-    editor.onDidChangeModelContent((e: any) => {
-      if (isAcceptingSuggestionRef.current) return;
+    editor.onDidChangeModelContent(
+      (e: MonacoEditor.IModelContentChangedEvent) => {
+        if (isAcceptingSuggestionRef.current) return;
 
-      // If user types while there's a suggestion, clear it (unless it's our insertion)
-      if (
-        currentSuggestionRef.current &&
-        e.changes.length > 0 &&
-        !suggestionAcceptedRef.current
-      ) {
-        const change = e.changes[0];
-
-        // Check if this is our own suggestion insertion
+        // If user types while there's a suggestion, clear it (unless it's our insertion)
         if (
-          change.text === currentSuggestionRef.current.text ||
-          change.text === currentSuggestionRef.current.text.replace(/\r/g, "")
+          currentSuggestionRef.current &&
+          e.changes.length > 0 &&
+          !suggestionAcceptedRef.current
         ) {
-          console.log("Our suggestion was inserted, not clearing");
-          return;
+          const change = e.changes[0];
+
+          // Check if this is our own suggestion insertion
+          if (
+            change.text === currentSuggestionRef.current.text ||
+            change.text === currentSuggestionRef.current.text.replace(/\r/g, "")
+          ) {
+            console.log("Our suggestion was inserted, not clearing");
+            return;
+          }
+
+          // User typed something else, clear the suggestion
+          console.log("User typed while suggestion active, clearing");
+          clearCurrentSuggestion();
         }
 
-        // User typed something else, clear the suggestion
-        console.log("User typed while suggestion active, clearing");
-        clearCurrentSuggestion();
-      }
+        // Trigger context-aware suggestions on certain typing patterns
+        if (e.changes.length > 0 && !suggestionAcceptedRef.current) {
+          const change = e.changes[0];
 
-      // Trigger context-aware suggestions on certain typing patterns
-      if (e.changes.length > 0 && !suggestionAcceptedRef.current) {
-        const change = e.changes[0];
-
-        // Trigger suggestions after specific characters
-        if (
-          change.text === "\n" || // New line
-          change.text === "{" || // Opening brace
-          change.text === "." || // Dot notation
-          change.text === "=" || // Assignment
-          change.text === "(" || // Function call
-          change.text === "," || // Parameter separator
-          change.text === ":" || // Object property
-          change.text === ";" // Statement end
-        ) {
-          setTimeout(() => {
-            if (
-              editorRef.current &&
-              !currentSuggestionRef.current &&
-              !suggestionLoading
-            ) {
-              onTriggerSuggestion("completion", editor);
-            }
-          }, 100); // Small delay to let the change settle
+          // Trigger suggestions after specific characters
+          if (
+            change.text === "\n" || // New line
+            change.text === "{" || // Opening brace
+            change.text === "." || // Dot notation
+            change.text === "=" || // Assignment
+            change.text === "(" || // Function call
+            change.text === "," || // Parameter separator
+            change.text === ":" || // Object property
+            change.text === ";" // Statement end
+          ) {
+            setTimeout(() => {
+              if (
+                editorRef.current &&
+                !currentSuggestionRef.current &&
+                !suggestionLoading
+              ) {
+                onTriggerSuggestion("completion", editor);
+              }
+            }, 100); // Small delay to let the change settle
+          }
         }
       }
-    });
+    );
 
     updateEditorLanguage();
   };
 
-  const updateEditorLanguage = () => {
+  const updateEditorLanguage = useCallback(() => {
     if (!activeFile || !monacoRef.current || !editorRef.current) return;
     const model = editorRef.current.getModel();
     if (!model) return;
@@ -557,11 +586,11 @@ export const PlaygroundEditor = ({
     } catch (error) {
       console.warn("Failed to set editor language:", error);
     }
-  };
+  }, [activeFile]);
 
   useEffect(() => {
     updateEditorLanguage();
-  }, [activeFile]);
+  }, [activeFile, updateEditorLanguage]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -1,12 +1,21 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { WebContainer } from "@webcontainer/api";
-import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
+import { TemplateFolder } from "@/modules/playground/lib/template-types";
+import { transformToWebContainerFormat } from "./transformer";
+
+declare global {
+  interface GlobalThis {
+    __webcontainerInstance?: WebContainer | null;
+    __webcontainerPromise?: Promise<WebContainer> | null;
+  }
+}
 
 interface UseWebContainerProps {
   templateData: TemplateFolder;
+  onTerminalData?: (data: string) => void; // callback for terminal output
 }
 
-interface UseWebContaierReturn {
+interface UseWebContainerReturn {
   serverUrl: string | null;
   isLoading: boolean;
   error: string | null;
@@ -17,23 +26,36 @@ interface UseWebContaierReturn {
 
 export const useWebContainer = ({
   templateData,
-}: UseWebContainerProps): UseWebContaierReturn => {
+  onTerminalData,
+}: UseWebContainerProps): UseWebContainerReturn => {
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [instance, setInstance] = useState<WebContainer | null>(null);
+  const [lastWriteTime, setLastWriteTime] = useState<number>(0);
 
   // Singleton WebContainer instance (module-level)
-  let webContainerSingleton: WebContainer | null =
-    (globalThis as any).__webcontainerInstance || null;
-  let webContainerPromise: Promise<WebContainer> | null =
-    (globalThis as any).__webcontainerPromise || null;
+  const webContainerSingleton: WebContainer | null =
+    (globalThis as GlobalThis).__webcontainerInstance || null;
+  const webContainerPromise: Promise<WebContainer> | null =
+    (globalThis as GlobalThis).__webcontainerPromise || null;
 
   useEffect(() => {
     let mounted = true;
 
     async function initializeWebContainer() {
       try {
+        // Check if WebContainer is supported in this environment
+        if (typeof window === "undefined") {
+          setError("WebContainer requires a browser environment");
+          setIsLoading(false);
+          return;
+        }
+        if (!WebContainer || typeof WebContainer.boot !== "function") {
+          setError("WebContainer API not available");
+          setIsLoading(false);
+          return;
+        }
         if (webContainerSingleton) {
           setInstance(webContainerSingleton);
           setIsLoading(false);
@@ -46,23 +68,32 @@ export const useWebContainer = ({
           setIsLoading(false);
           return;
         }
-        // Create and store the singleton promise
-        webContainerPromise = WebContainer.boot();
-        (globalThis as any).__webcontainerPromise = webContainerPromise;
-        const inst = await webContainerPromise;
-        webContainerSingleton = inst;
-        (globalThis as any).__webcontainerInstance = inst;
+        const newPromise = WebContainer.boot();
+        (globalThis as GlobalThis).__webcontainerPromise = newPromise;
+        const inst = await newPromise;
+        (globalThis as GlobalThis).__webcontainerInstance = inst;
         if (!mounted) return;
         setInstance(inst);
         setIsLoading(false);
       } catch (error) {
-        console.error("Failed to initialize WebContainer:", error);
         if (mounted) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Failed to initialize WebContainer"
-          );
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          if (errorMessage.includes("window")) {
+            setError(
+              "WebContainer requires a browser environment. Please open this page in a modern browser."
+            );
+          } else if (errorMessage.includes("SharedArrayBuffer")) {
+            setError(
+              "WebContainer requires SharedArrayBuffer support. Please enable cross-origin isolation."
+            );
+          } else if (errorMessage.includes("security")) {
+            setError(
+              "WebContainer security requirements not met. Please check browser security settings."
+            );
+          } else {
+            setError(`WebContainer initialization failed: ${errorMessage}`);
+          }
           setIsLoading(false);
         }
       }
@@ -72,10 +103,10 @@ export const useWebContainer = ({
 
     return () => {
       mounted = false;
-      // Do not teardown the singleton instance here
     };
   }, []);
 
+  // Simplified hot reload mechanism - just trigger iframe refresh
   const writeFileSync = useCallback(
     async (path: string, content: string): Promise<void> => {
       if (!instance) {
@@ -91,6 +122,15 @@ export const useWebContainer = ({
         }
 
         await instance.fs.writeFile(path, content);
+
+        // Trigger hot reload by updating timestamp
+        const currentTime = Date.now();
+        setLastWriteTime(currentTime);
+
+        // Log to terminal if callback provided
+        if (onTerminalData) {
+          onTerminalData(`📝 File saved: ${path}\r\n`);
+        }
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to write file";
@@ -98,7 +138,7 @@ export const useWebContainer = ({
         throw new Error(`Failed to write file at ${path}: ${errorMessage}`);
       }
     },
-    [instance]
+    [instance, onTerminalData]
   );
 
   const destory = useCallback(() => {

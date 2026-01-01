@@ -1,13 +1,13 @@
 "use client";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 
 import { transformToWebContainerFormat } from "../hooks/transformer";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 import { WebContainer } from "@webcontainer/api";
-import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
-import TerminalComponent from "./terminal";
+import { TemplateFolder } from "@/modules/playground/lib/template-types";
+import TerminalComponent, { TerminalRef } from "./terminal";
 
 interface WebContainerPreviewProps {
   templateData: TemplateFolder;
@@ -40,12 +40,192 @@ const WebContainerPreview = ({
   const [setupError, setSetupError] = useState<string | null>(null);
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [isSetupInProgress, setIsSetupInProgress] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
+  const [lastWriteTime, setLastWriteTime] = useState<number>(0);
+  const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const terminalRef = useRef<{
-    writeToTerminal: (data: string) => void;
-    clearTerminal: () => void;
-    focusTerminal: () => void;
-  } | null>(null);
+  const terminalRef = useRef<TerminalRef>(null);
+
+  // Callback to write data to terminal from WebContainer processes
+  const handleTerminalData = useCallback((data: string) => {
+    if (terminalRef.current?.writeToTerminal) {
+      terminalRef.current.writeToTerminal(data);
+    }
+  }, []);
+
+  // Hot reload mechanism - triggers when files are written
+  const triggerHotReload = useCallback(() => {
+    if (!instance || !isSetupComplete) return;
+
+    const currentTime = Date.now();
+    setLastWriteTime(currentTime);
+
+    // Clear any existing timeout
+    if (reloadTimeoutRef.current) {
+      clearTimeout(reloadTimeoutRef.current);
+    }
+
+    // Set a new timeout to trigger reload after a short delay
+    reloadTimeoutRef.current = setTimeout(async () => {
+      try {
+        if (terminalRef.current?.writeToTerminal) {
+          terminalRef.current.writeToTerminal(
+            "🔄 Detecting file changes, triggering hot reload...\r\n"
+          );
+        }
+
+        // Check if it's a React/Vue/Angular project and trigger appropriate reload
+        try {
+          const packageJson = await instance.fs.readFile(
+            "package.json",
+            "utf8"
+          );
+          const packageData = JSON.parse(packageJson);
+
+          // Check if this is an Express project with custom hot reload
+          if (packageData.dependencies?.express) {
+            // For Express projects, use custom API endpoint
+            try {
+              // Read current files to send to Express API
+              const indexHtml = await instance.fs
+                .readFile("pages/index.html", "utf8")
+                .catch(() => "");
+              const styleCss = await instance.fs
+                .readFile("static/style.css", "utf8")
+                .catch(() => "");
+
+              // Send update to Express hot reload API
+              const response = await fetch(`${previewUrl}/api/content`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  html: indexHtml,
+                  css: styleCss,
+                }),
+              });
+
+              if (response.ok) {
+                if (terminalRef.current?.writeToTerminal) {
+                  terminalRef.current.writeToTerminal(
+                    "✅ Express hot reload triggered successfully\r\n"
+                  );
+                }
+                return;
+              } else {
+                throw new Error(
+                  `Express API responded with ${response.status}`
+                );
+              }
+            } catch (apiError) {
+              console.error("Express API hot reload failed:", apiError);
+              if (terminalRef.current?.writeToTerminal) {
+                terminalRef.current.writeToTerminal(
+                  `⚠️ Express API reload failed: ${apiError}\r\n`
+                );
+              }
+              // Fall through to generic reload
+            }
+          }
+
+          // Different reload strategies based on framework
+          if (
+            packageData.dependencies?.react ||
+            packageData.dependencies?.["react-dom"]
+          ) {
+            // React projects - try to trigger HMR
+            await instance.spawn("pkill", ["-f", "npm"]);
+            setTimeout(() => {
+              instance.spawn("npm", ["run", "start"]).then((process) => {
+                process.output.pipeTo(
+                  new WritableStream({
+                    write(data) {
+                      if (terminalRef.current?.writeToTerminal) {
+                        terminalRef.current.writeToTerminal(data);
+                      }
+                    },
+                  })
+                );
+              });
+            }, 1000);
+          } else if (packageData.dependencies?.vue) {
+            // Vue projects - similar approach
+            await instance.spawn("pkill", ["-f", "npm"]);
+            setTimeout(() => {
+              instance.spawn("npm", ["run", "serve"]).then((process) => {
+                process.output.pipeTo(
+                  new WritableStream({
+                    write(data) {
+                      if (terminalRef.current?.writeToTerminal) {
+                        terminalRef.current.writeToTerminal(data);
+                      }
+                    },
+                  })
+                );
+              });
+            }, 1000);
+          } else {
+            // Generic approach - restart the dev server
+            await instance.spawn("pkill", ["-f", "npm"]);
+            setTimeout(() => {
+              instance.spawn("npm", ["run", "start"]).then((process) => {
+                process.output.pipeTo(
+                  new WritableStream({
+                    write(data) {
+                      if (terminalRef.current?.writeToTerminal) {
+                        terminalRef.current.writeToTerminal(data);
+                      }
+                    },
+                  })
+                );
+
+                // Re-register server-ready listener
+                instance.on("server-ready", (port: number, url: string) => {
+                  if (terminalRef.current?.writeToTerminal) {
+                    terminalRef.current.writeToTerminal(
+                      `🌐 Server reloaded at ${url}\r\n`
+                    );
+                  }
+                  setPreviewUrl(url);
+                });
+              });
+            }, 1000);
+          }
+
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              "✅ Hot reload triggered successfully\r\n"
+            );
+          }
+        } catch (error) {
+          console.error("Hot reload error:", error);
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              `⚠️ Hot reload failed: ${error}\r\n`
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Error during hot reload:", error);
+      }
+    }, 500); // Wait 500ms after last write before triggering reload
+  }, [instance, isSetupComplete, previewUrl]);
+
+  // Override writeFileSync to include hot reload
+  const writeFileSyncWithHotReload = useCallback(
+    async (path: string, content: string): Promise<void> => {
+      try {
+        await writeFileSync(path, content);
+        triggerHotReload();
+      } catch (error) {
+        console.error("Error in writeFileSyncWithHotReload:", error);
+        throw error;
+      }
+    },
+    [writeFileSync, triggerHotReload]
+  );
 
   // Reset setup state when forceResetup changes
   useEffect(() => {
@@ -65,6 +245,26 @@ const WebContainerPreview = ({
   }, [forceResetup]);
 
   useEffect(() => {
+    // Check WebContainer browser compatibility
+    if (typeof window !== "undefined") {
+      const hasSharedArrayBuffer = typeof SharedArrayBuffer !== "undefined";
+      const hasCrossOriginIsolated = window.crossOriginIsolated;
+
+      if (!hasSharedArrayBuffer || !hasCrossOriginIsolated) {
+        const errorMessage = !hasSharedArrayBuffer
+          ? "WebContainer requires SharedArrayBuffer support. Please use a modern browser (Chrome 87+, Firefox 89+, Safari 14+)."
+          : "WebContainer requires cross-origin isolation. Please ensure proper CORS headers are set.";
+
+        setSetupError(errorMessage);
+        if (terminalRef.current?.writeToTerminal) {
+          terminalRef.current.writeToTerminal(
+            `❌ Browser Compatibility Error: ${errorMessage}\r\n`
+          );
+        }
+        return;
+      }
+    }
+
     async function setupContainer() {
       if (!instance || isSetupComplete || isSetupInProgress) return;
 
@@ -72,40 +272,87 @@ const WebContainerPreview = ({
         setIsSetupInProgress(true);
         setSetupError(null);
 
-        try {
-          const packageJsonExists = await instance.fs.readFile(
-            "package.json",
-            "utf8"
-          );
+        console.log("🚀 Starting WebContainer setup...");
+        console.log("📋 Template data:", templateData);
+        console.log("🔧 Instance:", instance);
 
-          if (packageJsonExists) {
-            // Files are already mounted, just reconnect to existing server
+        try {
+          // Check if key files exist to determine if container is already set up
+          const [packageJsonResult, nodeModulesResult] =
+            await Promise.allSettled([
+              instance.fs.readFile("package.json", "utf8"),
+              instance.fs
+                .readFile("node_modules/.package-lock.json", "utf8")
+                .catch(() => null),
+            ]);
+
+          const packageJsonExists =
+            packageJsonResult.status === "fulfilled" && packageJsonResult.value;
+          const nodeModulesExist =
+            nodeModulesResult.status === "fulfilled" && nodeModulesResult.value;
+
+          if (packageJsonExists && nodeModulesExist) {
+            // Container is already set up, try to reconnect to existing server
             if (terminalRef.current?.writeToTerminal) {
               terminalRef.current.writeToTerminal(
-                "🔄 Reconnecting to existing WebContainer session...\r\n"
+                "🔄 Detected existing WebContainer session, reconnecting...\r\n"
               );
             }
 
-            instance.on("server-ready", (port: number, url: string) => {
-              if (terminalRef.current?.writeToTerminal) {
-                terminalRef.current.writeToTerminal(
-                  `🌐 Reconnected to server at ${url}\r\n`
-                );
-              }
+            // Set loading state to show we're reconnecting
+            setCurrentStep(4);
+            setLoadingState((prev) => ({ ...prev, starting: true }));
 
-              setPreviewUrl(url);
+            // Try to detect if server is already running by checking common ports
+            const serverCheckPromise = new Promise<string>(
+              (resolve, reject) => {
+                const timeout = setTimeout(() => {
+                  reject(new Error("Server check timeout"));
+                }, 3000); // 3 second timeout
+
+                instance.on("server-ready", (port: number, url: string) => {
+                  clearTimeout(timeout);
+                  resolve(url);
+                });
+
+                // If no server-ready event within 3 seconds, assume server needs to be started
+                setTimeout(() => {
+                  if (!previewUrl) {
+                    reject(new Error("No server detected"));
+                  }
+                }, 2000);
+              }
+            );
+
+            try {
+              const serverUrl = await serverCheckPromise;
+              setPreviewUrl(serverUrl);
               setLoadingState((prev) => ({
                 ...prev,
                 starting: false,
                 ready: true,
               }));
-            });
+              setIsSetupComplete(true);
+              setIsSetupInProgress(false);
 
-            setCurrentStep(4);
-            setLoadingState((prev) => ({ ...prev, starting: true }));
-            return;
+              if (terminalRef.current?.writeToTerminal) {
+                terminalRef.current.writeToTerminal(
+                  `🌐 Successfully reconnected to server at ${serverUrl}\r\n`
+                );
+              }
+              return;
+            } catch (serverError) {
+              if (terminalRef.current?.writeToTerminal) {
+                terminalRef.current.writeToTerminal(
+                  `⚠️ Server not running, starting it...\r\n`
+                );
+              }
+              // Fall through to start the server
+            }
           }
-        } catch (error) {}
+        } catch (error) {
+          // Container is not set up, proceed with full setup
+        }
 
         // Step-1 transform data
         setLoadingState((prev) => ({ ...prev, transforming: true }));
@@ -117,7 +364,10 @@ const WebContainerPreview = ({
           );
         }
 
+        console.log("🔄 Starting template transformation...");
         const files = transformToWebContainerFormat(templateData);
+        console.log("📁 Transformed files:", files);
+
         setLoadingState((prev) => ({
           ...prev,
           transforming: false,
@@ -132,12 +382,29 @@ const WebContainerPreview = ({
             "📁 Mounting files to WebContainer...\r\n"
           );
         }
-        await instance.mount(files);
 
-        if (terminalRef.current?.writeToTerminal) {
-          terminalRef.current.writeToTerminal(
-            "✅ Files mounted successfully\r\n"
-          );
+        console.log("📁 Starting file mount operation...");
+        try {
+          await instance.mount(files);
+          console.log("✅ Files mounted successfully");
+
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              "✅ Files mounted successfully\r\n"
+            );
+          }
+        } catch (mountError) {
+          console.error("❌ File mount error:", mountError);
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              `❌ File mount failed: ${
+                mountError instanceof Error
+                  ? mountError.message
+                  : String(mountError)
+              }\r\n`
+            );
+          }
+          throw mountError;
         }
         setLoadingState((prev) => ({
           ...prev,
@@ -166,7 +433,16 @@ const WebContainerPreview = ({
           })
         );
 
+        // Add timeout for installation (2 minutes)
+        const installTimeout = setTimeout(() => {
+          if (installProcess.kill) {
+            installProcess.kill();
+            throw new Error("Installation timed out after 2 minutes");
+          }
+        }, 120000);
+
         const installExitCode = await installProcess.exit;
+        clearTimeout(installTimeout);
 
         if (installExitCode !== 0) {
           throw new Error(
@@ -197,7 +473,16 @@ const WebContainerPreview = ({
 
         const startProcess = await instance.spawn("npm", ["run", "start"]);
 
+        // Add timeout for server startup (1 minute)
+        const serverTimeout = setTimeout(() => {
+          if (startProcess.kill) {
+            startProcess.kill();
+            throw new Error("Server startup timed out after 1 minute");
+          }
+        }, 60000);
+
         instance.on("server-ready", (port: number, url: string) => {
+          clearTimeout(serverTimeout);
           if (terminalRef.current?.writeToTerminal) {
             terminalRef.current.writeToTerminal(
               `🌐 Server ready at ${url}\r\n`
@@ -223,21 +508,62 @@ const WebContainerPreview = ({
             },
           })
         );
+
+        // Handle server process exit
+        startProcess.exit.then((exitCode) => {
+          if (exitCode !== 0 && !isSetupComplete) {
+            clearTimeout(serverTimeout);
+            throw new Error(`Server process exited with code: ${exitCode}`);
+          }
+        });
       } catch (err) {
         console.error("Error setting up container:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
+
         if (terminalRef.current?.writeToTerminal) {
           terminalRef.current.writeToTerminal(`❌ Error: ${errorMessage}\r\n`);
         }
-        setSetupError(errorMessage);
-        setIsSetupInProgress(false);
-        setLoadingState({
-          transforming: false,
-          mounting: false,
-          installing: false,
-          starting: false,
-          ready: false,
-        });
+
+        // Retry logic
+        if (retryCount < maxRetries) {
+          const newRetryCount = retryCount + 1;
+          setRetryCount(newRetryCount);
+
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              `🔄 Retrying setup... Attempt ${newRetryCount} of ${maxRetries}\r\n`
+            );
+          }
+
+          // Reset state and retry after a delay
+          setTimeout(() => {
+            setSetupError(null);
+            setCurrentStep(0);
+            setLoadingState({
+              transforming: false,
+              mounting: false,
+              installing: false,
+              starting: false,
+              ready: false,
+            });
+          }, 2000 * newRetryCount); // Exponential backoff
+        } else {
+          // Max retries reached, show final error
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              `❌ Max retries (${maxRetries}) reached. Setup failed.\r\n`
+            );
+          }
+          setSetupError(`${errorMessage} (Failed after ${maxRetries} retries)`);
+          setIsSetupInProgress(false);
+          setLoadingState({
+            transforming: false,
+            mounting: false,
+            installing: false,
+            starting: false,
+            ready: false,
+          });
+        }
       }
     }
 
@@ -245,7 +571,11 @@ const WebContainerPreview = ({
   }, [instance, templateData, isSetupComplete, isSetupInProgress]);
 
   useEffect(() => {
-    return () => {};
+    return () => {
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current);
+      }
+    };
   }, []);
 
   if (isLoading) {
@@ -347,11 +677,41 @@ const WebContainerPreview = ({
       ) : (
         <div className="h-full flex flex-col">
           <div className="flex-1">
-            <iframe
-              src={previewUrl}
-              className="w-full h-full border-none"
-              title="WebContainer Preview"
-            />
+            {previewUrl ? (
+              <iframe
+                key={lastWriteTime} // Force iframe reload when files change
+                src={previewUrl}
+                className="w-full h-full border-none"
+                title="WebContainer Preview"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                allow="clipboard-read; clipboard-write;"
+                onLoad={() => {
+                  console.log(
+                    "Preview iframe loaded successfully:",
+                    previewUrl
+                  );
+                }}
+                onError={(e) => {
+                  console.error("Preview iframe error:", e);
+                  if (terminalRef.current?.writeToTerminal) {
+                    terminalRef.current.writeToTerminal(
+                      `❌ Preview iframe error: ${e}\r\n`
+                    );
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                <div className="text-center">
+                  <div className="text-lg font-medium mb-2">
+                    Preview Loading...
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    Waiting for server to start...
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="h-64 border-t">
