@@ -94,19 +94,28 @@ export const PlaygroundEditor = ({
             return { items: [] };
           }
 
-          // Check if current position matches suggestion position (with some tolerance)
+          // Check if current position matches suggestion position (with more tolerance)
           const currentLine = position.lineNumber;
           const currentColumn = position.column;
 
+          // Remove line matching requirement and only check column within reasonable range
+          // Allow suggestions to be valid across multiple lines since Monaco may call provider at different times
           const isPositionMatch =
-            currentLine === suggestionPosition.line &&
-            currentColumn >= suggestionPosition.column &&
-            currentColumn <= suggestionPosition.column + 2; // Small tolerance
+            currentColumn >= suggestionPosition.column - 5 && // Generous left tolerance
+            currentColumn <= suggestionPosition.column + 15; // Generous right tolerance
 
           if (!isPositionMatch) {
             console.log("Position mismatch", {
               current: `${currentLine}:${currentColumn}`,
               expected: `${suggestionPosition.line}:${suggestionPosition.column}`,
+              tolerance: `Any line, column ${
+                suggestionPosition.column - 5
+              } to ${suggestionPosition.column + 15}`,
+              currentColumn: currentColumn,
+              suggestionColumn: suggestionPosition.column,
+              columnRange: `${currentColumn} >= ${
+                suggestionPosition.column - 5
+              } && ${currentColumn} <= ${suggestionPosition.column + 15}`,
             });
             return { items: [] };
           }
@@ -148,8 +157,15 @@ export const PlaygroundEditor = ({
             ],
           };
         },
-        freeInlineCompletions: (completions: unknown) => {
+        freeInlineCompletions: (
+          completions: MonacoNamespace.languages.InlineCompletions
+        ) => {
           console.log("freeInlineCompletions called");
+          // Method is required by Monaco Editor but we don't need to do anything here
+        },
+        disposeInlineCompletions: () => {
+          console.log("disposeInlineCompletions called");
+          // Method is required by Monaco Editor but we don't need to do anything here
         },
       };
     },
@@ -292,9 +308,8 @@ export const PlaygroundEditor = ({
 
     if (!position) return false;
     return (
-      position.lineNumber === suggestion.position.line &&
-      position.column >= suggestion.position.column &&
-      position.column <= suggestion.position.column + 2
+      position.column >= suggestion.position.column - 5 && // Match the provider tolerance
+      position.column <= suggestion.position.column + 15 // Match the provider tolerance
     );
   }, []);
 
@@ -481,40 +496,42 @@ export const PlaygroundEditor = ({
     });
 
     // Listen for cursor position changes to hide suggestions when moving away
-    editor.onDidChangeCursorPosition((e: MonacoEditor.ICursorPositionChangedEvent) => {
-      if (isAcceptingSuggestionRef.current) return;
+    editor.onDidChangeCursorPosition(
+      (e: MonacoEditor.ICursorPositionChangedEvent) => {
+        if (isAcceptingSuggestionRef.current) return;
 
-      const newPosition = e.position;
+        const newPosition = e.position;
 
-      // Clear existing suggestion if cursor moved away
-      if (currentSuggestionRef.current && !suggestionAcceptedRef.current) {
-        const suggestionPos = currentSuggestionRef.current.position;
+        // Clear existing suggestion if cursor moved away
+        if (currentSuggestionRef.current && !suggestionAcceptedRef.current) {
+          const suggestionPos = currentSuggestionRef.current.position;
 
-        // If cursor moved away from suggestion position, clear it
-        if (
-          newPosition.lineNumber !== suggestionPos.line ||
-          newPosition.column < suggestionPos.column ||
-          newPosition.column > suggestionPos.column + 10
-        ) {
-          console.log("Cursor moved away from suggestion, clearing");
-          clearCurrentSuggestion();
-          onRejectSuggestion(editor);
-        }
-      }
-
-      // Trigger new suggestion if appropriate (simplified)
-      if (!currentSuggestionRef.current && !suggestionLoading) {
-        // Clear any existing timeout
-        if (suggestionTimeoutRef.current) {
-          clearTimeout(suggestionTimeoutRef.current);
+          // If cursor moved away from suggestion position, clear it
+          if (
+            newPosition.lineNumber !== suggestionPos.line ||
+            newPosition.column < suggestionPos.column ||
+            newPosition.column > suggestionPos.column + 10
+          ) {
+            console.log("Cursor moved away from suggestion, clearing");
+            clearCurrentSuggestion();
+            onRejectSuggestion(editor);
+          }
         }
 
-        // Trigger suggestion with a delay
-        suggestionTimeoutRef.current = setTimeout(() => {
-          onTriggerSuggestion("completion", editor);
-        }, 300);
+        // Trigger new suggestion if appropriate (simplified)
+        if (!currentSuggestionRef.current && !suggestionLoading) {
+          // Clear any existing timeout
+          if (suggestionTimeoutRef.current) {
+            clearTimeout(suggestionTimeoutRef.current);
+          }
+
+          // Trigger suggestion with a delay
+          suggestionTimeoutRef.current = setTimeout(() => {
+            onTriggerSuggestion("completion", editor);
+          }, 300);
+        }
       }
-    });
+    );
 
     // Listen for content changes to detect manual typing over suggestions
     editor.onDidChangeModelContent(
@@ -634,7 +651,7 @@ export const PlaygroundEditor = ({
             ? getEditorLanguage(activeFile.fileExtension || "")
             : "plaintext"
         }
-        // @ts-ignore
+        // @ts-expect-error - Monaco Editor options type compatibility issue
         options={defaultEditorOptions}
       />
     </div>
