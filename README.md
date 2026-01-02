@@ -31,10 +31,10 @@ Designed with scalability, performance, and maintainability in mind.
 
 🧩 Tech Stack
 
-Frontend
+Frontend:
 TypeScript · Next.js · React · Tailwind CSS
 
-Backend
+Backend:
 Node.js · Express · Next.js API Routes · MongoDB · Prisma · WebContainers · Docker · Vercel · AI APIs
 
 🏗️ Architecture Overview
