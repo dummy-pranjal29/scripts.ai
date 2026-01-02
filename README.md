@@ -29,44 +29,13 @@ Each user operates in a secure, isolated environment with proper access control.
 Production-Grade SaaS Architecture
 Designed with scalability, performance, and maintainability in mind.
 
-🧠 Tech Stack
+🧩 Tech Stack
+
 Frontend
-
-TypeScript
-
-Next.js (App Router)
-
-React
-
-Tailwind CSS
-
-React Hooks for state management
+TypeScript · Next.js · React · Tailwind CSS
 
 Backend
-
-Node.js
-
-Express / Next.js API Routes
-
-Prisma ORM
-
-MongoDB
-
-Infrastructure & Tooling
-
-WebContainers (browser-based execution)
-
-Docker (environment consistency)
-
-Vercel (deployment and edge optimization)
-
-AI & Platform
-
-Modern AI APIs for code generation, debugging, and explanation
-
-Prompt orchestration and response normalization
-
-Secure API handling and rate limiting
+Node.js · Express · Next.js API Routes · MongoDB · Prisma · WebContainers · Docker · Vercel · AI APIs
 
 🏗️ Architecture Overview
 Client (Next.js + React)
