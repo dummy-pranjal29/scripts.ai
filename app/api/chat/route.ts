@@ -119,7 +119,7 @@ Your goal is to act like a reliable, experienced developer who gives accurate, a
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "codellama:latest",
+        model: "qwen2.5:1.5b",
         prompt: prompt,
         stream: false,
         options: {
@@ -130,6 +130,14 @@ Your goal is to act like a reliable, experienced developer who gives accurate, a
       }),
     });
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage =
+        errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+      console.error("Ollama API error:", errorMessage);
+      throw new Error(`Ollama error: ${errorMessage}`);
+    }
+
     const data = await response.json();
 
     if (!data.response) {
@@ -139,7 +147,27 @@ Your goal is to act like a reliable, experienced developer who gives accurate, a
     return data.response.trim();
   } catch (error) {
     console.error("AI generation error:", error);
-    throw new Error("Failed to generate AI response");
+
+    if (error instanceof Error) {
+      // Check for specific Ollama errors
+      if (error.message.includes("requires more system memory")) {
+        throw new Error(
+          "The AI model requires more memory than available. Please try a smaller model or free up system memory."
+        );
+      }
+      if (error.message.includes("Ollama error:")) {
+        throw new Error(error.message);
+      }
+      if (error.message.includes("ECONNREFUSED")) {
+        throw new Error(
+          "Cannot connect to Ollama. Please ensure Ollama is running on localhost:11434."
+        );
+      }
+    }
+
+    throw new Error(
+      "Failed to generate AI response. Please check if Ollama is running and has sufficient memory."
+    );
   }
 }
 

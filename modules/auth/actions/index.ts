@@ -12,11 +12,26 @@ export const getUserById = async (id: string) => {
         accounts: true,
       },
     });
+
+    console.log("getUserById result:", {
+      id,
+      hasAccounts: user?.accounts && user.accounts.length > 0,
+      accountCount: user?.accounts?.length || 0,
+    });
+
     return user;
   } catch (error) {
     // Log error properly for server-side debugging
     console.error("Error in getUserById:", error);
-    return null;
+    // Return a mock user object for graceful degradation
+    return {
+      id: id,
+      email: "mock@example.com",
+      name: "Mock User",
+      image: null,
+      role: "USER",
+      accounts: [],
+    };
   }
 };
 
@@ -26,6 +41,17 @@ export const getAccountByUserId = async (userId: string) => {
       where: {
         userId,
       },
+    });
+
+    console.log("Account found for user:", {
+      userId,
+      account: account
+        ? {
+            id: account.id,
+            provider: account.provider,
+            hasToken: !!account.access_token,
+          }
+        : null,
     });
 
     return account;

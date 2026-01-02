@@ -18,6 +18,7 @@ interface WebContainerPreviewProps {
   writeFileSync: (path: string, content: string) => Promise<void>;
   forceResetup?: boolean; // Optional prop to force re-setup
 }
+
 const WebContainerPreview = ({
   templateData,
   error,
@@ -42,6 +43,7 @@ const WebContainerPreview = ({
   const [isSetupInProgress, setIsSetupInProgress] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
+  const [canManualRetry, setCanManualRetry] = useState(false);
   const [lastWriteTime, setLastWriteTime] = useState<number>(0);
   const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -213,6 +215,23 @@ const WebContainerPreview = ({
     }, 500); // Wait 500ms after last write before triggering reload
   }, [instance, isSetupComplete, previewUrl]);
 
+  // Manual retry function
+  const handleManualRetry = useCallback(() => {
+    setSetupError(null);
+    setRetryCount(0);
+    setIsSetupComplete(false);
+    setIsSetupInProgress(false);
+    setPreviewUrl("");
+    setCurrentStep(0);
+    setLoadingState({
+      transforming: false,
+      mounting: false,
+      installing: false,
+      starting: false,
+      ready: false,
+    });
+  }, []);
+
   // Override writeFileSync to include hot reload
   const writeFileSyncWithHotReload = useCallback(
     async (path: string, content: string): Promise<void> => {
@@ -375,7 +394,7 @@ const WebContainerPreview = ({
         }));
         setCurrentStep(2);
 
-        //  Step-2 Mount Files
+        // Step-2 Mount Files
 
         if (terminalRef.current?.writeToTerminal) {
           terminalRef.current.writeToTerminal(
@@ -535,74 +554,260 @@ const WebContainerPreview = ({
           }
         }
 
-        const startProcess = await instance.spawn("npm", ["run", "start"]);
+        // Check if package.json has a valid script before trying to run it
+        try {
+          const packageJsonContent = await instance.fs.readFile(
+            "package.json",
+            "utf8"
+          );
+          const packageData = JSON.parse(packageJsonContent);
 
-        // Add progress indicator for long-running processes
-        let progressIndicator = 0;
-        const progressInterval = setInterval(() => {
-          progressIndicator++;
-          if (terminalRef.current?.writeToTerminal && !isSetupComplete) {
-            const dots = ".".repeat((progressIndicator % 4) + 1);
-            terminalRef.current.writeToTerminal(
-              `⏳ Server starting${dots}\r\n`
-            );
-          }
-        }, 10000); // Show progress every 10 seconds
-
-        // Add timeout for server startup with adaptive duration
-        const serverTimeout = setTimeout(() => {
-          clearInterval(progressInterval);
-          if (startProcess.kill) {
-            startProcess.kill();
-            const timeoutMinutes =
-              Math.round((serverTimeoutDuration / 60000) * 10) / 10;
+          if (
+            !packageData.scripts ||
+            Object.keys(packageData.scripts).length === 0
+          ) {
             throw new Error(
-              `Server startup timed out after ${timeoutMinutes} minute(s). This might be due to:\n` +
-                `• Large dependencies taking time to compile\n` +
-                `• Complex build processes\n` +
-                `• Insufficient resources\n` +
-                `• Issues with the project configuration\n\n` +
-                `Try checking the terminal output above for more details.`
+              "No scripts found in package.json. Please add a start, serve, or dev script."
             );
           }
-        }, serverTimeoutDuration);
 
-        instance.on("server-ready", (port: number, url: string) => {
-          clearTimeout(serverTimeout);
-          clearInterval(progressInterval);
+          // Try common script names in order of preference
+          const scriptPriority = ["start", "serve", "dev", "run"];
+          let selectedScript: string | null = null;
+
+          for (const scriptName of scriptPriority) {
+            if (packageData.scripts[scriptName]) {
+              selectedScript = scriptName;
+              break;
+            }
+          }
+
+          if (!selectedScript) {
+            const availableScripts = Object.keys(packageData.scripts).join(
+              ", "
+            );
+            throw new Error(
+              `No common script (start, serve, dev, run) found in package.json. ` +
+                `Available scripts: ${availableScripts}`
+            );
+          }
+
           if (terminalRef.current?.writeToTerminal) {
             terminalRef.current.writeToTerminal(
-              `🌐 Server ready at ${url}\r\n`
+              `📝 Using script: "${selectedScript}" -> "${packageData.scripts[selectedScript]}"\r\n`
             );
           }
-          setPreviewUrl(url);
-          setLoadingState((prev) => ({
-            ...prev,
-            starting: false,
-            ready: true,
-          }));
-          setIsSetupComplete(true);
-          setIsSetupInProgress(false);
-        });
 
-        // Handle start process output - stream to terminal
-        startProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              if (terminalRef.current?.writeToTerminal) {
-                terminalRef.current.writeToTerminal(data);
-              }
-            },
-          })
-        );
+          const startProcess = await instance.spawn("npm", [
+            "run",
+            selectedScript,
+          ]);
 
-        // Handle server process exit
-        startProcess.exit.then((exitCode) => {
-          if (exitCode !== 0 && !isSetupComplete) {
+          // Add progress indicator for long-running processes
+          let progressIndicator = 0;
+          const progressInterval = setInterval(() => {
+            progressIndicator++;
+            if (terminalRef.current?.writeToTerminal && !isSetupComplete) {
+              const dots = ".".repeat((progressIndicator % 4) + 1);
+              terminalRef.current.writeToTerminal(
+                `⏳ Server starting${dots}\r\n`
+              );
+            }
+          }, 10000); // Show progress every 10 seconds
+
+          // Add timeout for server startup with adaptive duration
+          const serverTimeout = setTimeout(() => {
+            clearInterval(progressInterval);
+            if (startProcess.kill) {
+              startProcess.kill();
+              const timeoutMinutes =
+                Math.round((serverTimeoutDuration / 60000) * 10) / 10;
+              throw new Error(
+                `Server startup timed out after ${timeoutMinutes} minute(s). This might be due to:\n` +
+                  `• Large dependencies taking time to compile\n` +
+                  `• Complex build processes\n` +
+                  `• Insufficient resources\n` +
+                  `• Issues with the project configuration\n\n` +
+                  `Try checking the terminal output above for more details.`
+              );
+            }
+          }, serverTimeoutDuration);
+
+          instance.on("server-ready", (port: number, url: string) => {
             clearTimeout(serverTimeout);
-            throw new Error(`Server process exited with code: ${exitCode}`);
+            clearInterval(progressInterval);
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                `🌐 Server ready at ${url}\r\n`
+              );
+            }
+            setPreviewUrl(url);
+            setLoadingState((prev) => ({
+              ...prev,
+              starting: false,
+              ready: true,
+            }));
+            setIsSetupComplete(true);
+            setIsSetupInProgress(false);
+          });
+
+          // Handle start process output - stream to terminal
+          startProcess.output.pipeTo(
+            new WritableStream({
+              write(data) {
+                if (terminalRef.current?.writeToTerminal) {
+                  terminalRef.current.writeToTerminal(data);
+                }
+              },
+            })
+          );
+
+          // Handle server process exit
+          startProcess.exit
+            .then((exitCode) => {
+              if (exitCode !== 0 && !isSetupComplete) {
+                clearTimeout(serverTimeout);
+                clearInterval(progressInterval);
+
+                const errorMessage = `Server process exited with code: ${exitCode}`;
+                console.error("❌ Server startup failed:", errorMessage);
+
+                if (terminalRef.current?.writeToTerminal) {
+                  terminalRef.current.writeToTerminal(`❌ ${errorMessage}\r\n`);
+                  terminalRef.current.writeToTerminal(
+                    `🔍 Possible reasons:\r\n` +
+                      `• Missing or invalid package.json scripts\r\n` +
+                      `• Port conflicts or network issues\r\n` +
+                      `• Missing dependencies or installation errors\r\n` +
+                      `• Invalid project configuration\r\n` +
+                      `• Insufficient memory or resources\r\n\r\n` +
+                      `💡 Try checking the terminal output above for specific error messages.\r\n`
+                  );
+                }
+
+                // Instead of throwing, set error state and let retry mechanism handle it
+                setSetupError(errorMessage);
+                setIsSetupInProgress(false);
+                setLoadingState({
+                  transforming: false,
+                  mounting: false,
+                  installing: false,
+                  starting: false,
+                  ready: false,
+                });
+
+                // Trigger retry mechanism if available
+                if (retryCount < maxRetries) {
+                  const newRetryCount = retryCount + 1;
+                  setRetryCount(newRetryCount);
+
+                  if (terminalRef.current?.writeToTerminal) {
+                    terminalRef.current.writeToTerminal(
+                      `🔄 Retrying setup... Attempt ${newRetryCount} of ${maxRetries}\r\n`
+                    );
+                  }
+
+                  // Reset state and retry after a delay
+                  setTimeout(() => {
+                    setSetupError(null);
+                    setCurrentStep(0);
+                    setLoadingState({
+                      transforming: false,
+                      mounting: false,
+                      installing: false,
+                      starting: false,
+                      ready: false,
+                    });
+                    // Trigger setup again by changing dependencies slightly
+                    setIsSetupInProgress(false);
+                  }, 3000 * newRetryCount); // Exponential backoff
+                } else {
+                  if (terminalRef.current?.writeToTerminal) {
+                    terminalRef.current.writeToTerminal(
+                      `❌ Max retries (${maxRetries}) reached. Please check your project configuration and try again.\r\n`
+                    );
+                  }
+                }
+              } else if (exitCode === 0) {
+                clearTimeout(serverTimeout);
+                clearInterval(progressInterval);
+                if (terminalRef.current?.writeToTerminal) {
+                  terminalRef.current.writeToTerminal(
+                    `✅ Server process completed successfully\r\n`
+                  );
+                }
+              }
+            })
+            .catch((exitError) => {
+              clearTimeout(serverTimeout);
+              clearInterval(progressInterval);
+              console.error(
+                "❌ Error handling server process exit:",
+                exitError
+              );
+
+              if (terminalRef.current?.writeToTerminal) {
+                terminalRef.current.writeToTerminal(
+                  `❌ Error monitoring server process: ${exitError}\r\n`
+                );
+              }
+
+              setSetupError(`Server process monitoring failed: ${exitError}`);
+              setIsSetupInProgress(false);
+            });
+        } catch (err) {
+          console.error("Error setting up container:", err);
+          const errorMessage = err instanceof Error ? err.message : String(err);
+
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              `❌ Error: ${errorMessage}\r\n`
+            );
           }
-        });
+
+          // Retry logic
+          if (retryCount < maxRetries) {
+            const newRetryCount = retryCount + 1;
+            setRetryCount(newRetryCount);
+
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                `🔄 Retrying setup... Attempt ${newRetryCount} of ${maxRetries}\r\n`
+              );
+            }
+
+            // Reset state and retry after a delay
+            setTimeout(() => {
+              setSetupError(null);
+              setCurrentStep(0);
+              setLoadingState({
+                transforming: false,
+                mounting: false,
+                installing: false,
+                starting: false,
+                ready: false,
+              });
+            }, 2000 * newRetryCount); // Exponential backoff
+          } else {
+            // Max retries reached, show final error
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                `❌ Max retries (${maxRetries}) reached. Setup failed.\r\n`
+              );
+            }
+            setSetupError(
+              `${errorMessage} (Failed after ${maxRetries} retries)`
+            );
+            setIsSetupInProgress(false);
+            setLoadingState({
+              transforming: false,
+              mounting: false,
+              installing: false,
+              starting: false,
+              ready: false,
+            });
+          }
+        }
       } catch (err) {
         console.error("Error setting up container:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -687,11 +892,30 @@ const WebContainerPreview = ({
             <XCircle className="h-5 w-5" />
             <h3 className="font-semibold">Error</h3>
           </div>
-          <p className="text-sm">{error || setupError}</p>
+          <p className="text-sm mb-4">{error || setupError}</p>
+
+          {/* Show terminal for debugging */}
+          <div className="mb-4">
+            <TerminalComponent
+              ref={terminalRef}
+              webContainerInstance={instance}
+              theme="dark"
+              className="h-48 w-full border border-red-200 dark:border-red-800 rounded"
+            />
+          </div>
+
+          {/* Manual retry button */}
+          <button
+            onClick={handleManualRetry}
+            className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            🔄 Retry Setup
+          </button>
         </div>
       </div>
     );
   }
+
   const getStepIcon = (stepIndex: number) => {
     if (stepIndex < currentStep) {
       return <CheckCircle className="h-5 w-5 text-green-500" />;

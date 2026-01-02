@@ -65,22 +65,27 @@ export const getAllPlaygroundForUser = async () => {
     return []; // ✅ Safe for layouts & SSR
   }
 
-  return await db.playground.findMany({
-    where: { userId: user.id },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      user: true,
-      starMarks: {
-        // ✅ CORRECT relation name
-        where: {
-          userId: user.id,
-        },
-        select: {
-          isMarked: true,
+  try {
+    return await db.playground.findMany({
+      where: { userId: user.id },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        user: true,
+        starMarks: {
+          // ✅ CORRECT relation name
+          where: {
+            userId: user.id,
+          },
+          select: {
+            isMarked: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    console.error("Error in getAllPlaygroundForUser:", error);
+    return []; // Return empty array on database error
+  }
 };
 
 export const createPlayground = async (data: {

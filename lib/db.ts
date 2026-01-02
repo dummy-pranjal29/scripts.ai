@@ -13,3 +13,13 @@ export const db =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = db;
 }
+
+// Handle database connection errors gracefully
+db.$connect()
+  .then(() => {
+    console.log("✅ Database connected successfully");
+  })
+  .catch((error) => {
+    console.error("❌ Database connection failed:", error.message);
+    console.log("⚠️  Application running without database connection");
+  });

@@ -13,7 +13,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     async signIn({ user, account, profile }) {
       if (!user || !account) return false;
 
-      // Check if the user already exists
+      // Check if user already exists
       const existingUser = await db.user.findUnique({
         where: { email: user.email! },
       });
@@ -27,7 +27,6 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             image: user.image,
 
             accounts: {
-              // @ts-ignore
               create: {
                 type: account.type,
                 provider: account.provider,
@@ -45,8 +44,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         });
 
         if (!newUser) return false; // Return false if user creation fails
+        return true; // Explicitly return true if user creation succeeds
       } else {
-        // Link the account if user exists
+        // Link the account to the user
         const existingAccount = await db.account.findUnique({
           where: {
             provider_providerAccountId: {
@@ -54,6 +54,12 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
               providerAccountId: account.providerAccountId,
             },
           },
+        });
+
+        console.log("Linking account to user:", {
+          userId: existingUser.id,
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
         });
 
         // If the account does not exist, create it
@@ -81,9 +87,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             },
           });
         }
-      }
 
-      return true;
+        return true;
+      }
     },
 
     async jwt({ token }) {
@@ -94,7 +100,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
         if (!existingUser) return token;
 
-        const exisitingAccount = await getAccountByUserId(existingUser.id);
+        const existingAccount = await getAccountByUserId(existingUser.id);
 
         token.name = existingUser.name;
         token.email = existingUser.email;
@@ -111,7 +117,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       // Attach the user ID from the token to the session
       if (token.sub && session.user) {
-        session.user.id = token.id as string;
+        session.user.id = token.sub as string;
       }
 
       if (token.sub && session.user) {

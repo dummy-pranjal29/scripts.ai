@@ -132,8 +132,9 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
   const [filterType, setFilterType] = useState<string>("all");
   const [autoSave, setAutoSave] = useState(true);
   const [streamResponse, setStreamResponse] = useState(true);
-  const [model, setModel] = useState<string>("gpt-6");
+  const [model, setModel] = useState<string>("qwen2.5");
   const [showSessions, setShowSessions] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -160,6 +161,16 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
         return `Please analyze this code for performance optimizations and suggest improvements:\n\n**Code to optimize:** ${content}`;
       default:
         return content;
+    }
+  };
+
+  const handleCopyMessage = async (content: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
     }
   };
 
@@ -444,7 +455,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                       onChange={(e) => setModel(e.target.value)}
                       className="bg-zinc-900/60 border border-zinc-800 rounded px-2 py-1 text-zinc-200 focus:outline-none"
                     >
-                      <option value="gpt-6">gpt-6</option>
+                      <option value="qwen2.5">qwen2.5 (1.5B)</option>
                       <option value="codellama">codellama</option>
                       <option value="llama2">llama2</option>
                     </select>
@@ -608,11 +619,18 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={() =>
-                              navigator.clipboard.writeText(msg.content)
+                              handleCopyMessage(msg.content, msg.id)
                             }
-                            className="h-6 w-6 p-0 text-zinc-400 hover:text-zinc-200"
+                            className={cn(
+                              "h-6 w-6 p-0 text-zinc-400 hover:text-zinc-200",
+                              copiedMessageId === msg.id && "text-green-400"
+                            )}
                           >
-                            <Copy className="h-3 w-3" />
+                            {copiedMessageId === msg.id ? (
+                              <span className="text-xs">✓</span>
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
                           </Button>
                           <Button
                             variant="ghost"
