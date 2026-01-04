@@ -4,7 +4,7 @@
  * @type {string[]}
  */
 
-export const publicRoutes: string[] = [];
+export const publicRoutes: string[] = ["/", "/playgrounds"];
 
 /**
  * An Array of routes that are protected
@@ -12,7 +12,7 @@ export const publicRoutes: string[] = [];
  * @type {string[]}
  */
 
-export const protectedRoutes: string[] = ["/"];
+export const protectedRoutes: string[] = ["/dashboard"];
 
 /**
  * An Array of routes that are accessible to the public
