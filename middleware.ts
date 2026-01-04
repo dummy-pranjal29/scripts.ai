@@ -15,30 +15,28 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
 
   const isApiAuthRoute = nextUrl.pathname.startsWith(apiAuthPrefix);
-
   const isPublicRoute = publicRoutes.includes(nextUrl.pathname);
-
   const isAuthRoute = authRoutes.includes(nextUrl.pathname);
 
-  console.log("Middleware - Path:", nextUrl.pathname, "Logged in:", isLoggedIn);
-
   if (isApiAuthRoute) {
-    return null;
+    return undefined;
   }
 
   if (isAuthRoute) {
     if (isLoggedIn) {
       return Response.redirect(new URL(DEFAULT_LOGIN_REDIRECT, nextUrl));
     }
-    return null;
+    return undefined;
   }
 
   if (!isLoggedIn && !isPublicRoute) {
-    console.log("Redirecting to sign-in from:", nextUrl.pathname);
-    return Response.redirect(new URL("/auth/sign-in", nextUrl));
+    const callbackUrl = nextUrl.pathname;
+    const signInUrl = new URL("/auth/sign-in", nextUrl);
+    signInUrl.searchParams.set("callbackUrl", callbackUrl);
+    return Response.redirect(signInUrl);
   }
 
-  return null;
+  return undefined;
 });
 
 export const config = {

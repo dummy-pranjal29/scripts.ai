@@ -5,8 +5,8 @@ import type { NextAuthConfig } from "next-auth";
 export default {
   providers: [
     GitHub({
-      clientId: process.env.NEXTAUTH_GITHUB_ID,
-      clientSecret: process.env.NEXTAUTH_GITHUB_SECRET,
+      clientId: process.env.NEXTAUTH_GITHUB_ID!,
+      clientSecret: process.env.NEXTAUTH_GITHUB_SECRET!,
       authorization: {
         params: {
           scope: "repo user:email",
@@ -14,8 +14,12 @@ export default {
       },
     }),
     Google({
-      clientId: process.env.NEXTAUTH_GOOGLE_ID,
-      clientSecret: process.env.NEXTAUTH_GOOGLE_SECRET,
+      clientId: process.env.NEXTAUTH_GOOGLE_ID!,
+      clientSecret: process.env.NEXTAUTH_GOOGLE_SECRET!,
     }),
   ],
+  pages: {
+    signIn: "/auth/sign-in",
+    signOut: "/auth/sign-in",
+  },
 } satisfies NextAuthConfig;
