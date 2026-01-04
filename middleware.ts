@@ -20,6 +20,8 @@ export default auth((req) => {
 
   const isAuthRoute = authRoutes.includes(nextUrl.pathname);
 
+  console.log("Middleware - Path:", nextUrl.pathname, "Logged in:", isLoggedIn);
+
   if (isApiAuthRoute) {
     return null;
   }
@@ -32,6 +34,7 @@ export default auth((req) => {
   }
 
   if (!isLoggedIn && !isPublicRoute) {
+    console.log("Redirecting to sign-in from:", nextUrl.pathname);
     return Response.redirect(new URL("/auth/sign-in", nextUrl));
   }
 
