@@ -1,11 +1,7 @@
-import {
-  readTemplateStructureFromJson,
-  saveTemplateStructureToJson,
-} from "@/modules/playground/lib/path-to-json";
+import { scanTemplateDirectoryInMemory } from "@/modules/playground/lib/path-to-json";
 import { db, safeDbOperation } from "@/lib/db";
 import { templatePaths } from "@/lib/template";
 import path from "path";
-import fs from "fs/promises";
 import { NextRequest } from "next/server";
 
 function validateJsonStructure(data: unknown): boolean {
@@ -48,28 +44,15 @@ export async function GET(
   try {
     const inputPath = path.join(process.cwd(), templatePath);
 
-    // Create output directory if it doesn't exist
-    const outputDir = path.join(process.cwd(), "output");
-    await fs.mkdir(outputDir, { recursive: true });
+    // Use in-memory template scanning for serverless compatibility
+    const result = await scanTemplateDirectoryInMemory(inputPath);
 
-    const outputFile = path.join(outputDir, `${templateKey}.json`);
-
-    await saveTemplateStructureToJson(inputPath, outputFile);
-    const result = await readTemplateStructureFromJson(outputFile);
-
-    // Validate the JSON structure before saving
+    // Validate the JSON structure before returning
     if (!validateJsonStructure(result.items)) {
       return Response.json(
         { error: "Invalid JSON structure" },
         { status: 500 }
       );
-    }
-
-    // Clean up the temporary file
-    try {
-      await fs.unlink(outputFile);
-    } catch (cleanupError) {
-      console.warn("Failed to clean up temporary file:", cleanupError);
     }
 
     return Response.json(

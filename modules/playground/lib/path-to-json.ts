@@ -76,6 +76,34 @@ export const scanTemplateDirectory = async (
   }
 };
 
+// In-memory template scanning for serverless environments
+export const scanTemplateDirectoryInMemory = async (
+  templatePath: string
+): Promise<TemplateFolder> => {
+  try {
+    const fs = await import("fs/promises");
+    const path = await import("path");
+
+    const stats = await fs.stat(templatePath);
+    if (!stats.isDirectory()) {
+      throw new Error("Template path must be a directory");
+    }
+
+    const folderName = path.basename(templatePath);
+    const items = await scanDirectory(templatePath);
+
+    return {
+      folderName,
+      items,
+    };
+  } catch (error) {
+    console.error("Error scanning template directory:", error);
+    throw new Error(
+      `Failed to scan template directory ${templatePath}: ${error}`
+    );
+  }
+};
+
 async function scanDirectory(dirPath: string): Promise<TemplateItem[]> {
   const fs = await import("fs/promises");
   const path = await import("path");
