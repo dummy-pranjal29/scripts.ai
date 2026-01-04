@@ -47,7 +47,12 @@ export async function GET(
 
   try {
     const inputPath = path.join(process.cwd(), templatePath);
-    const outputFile = path.join(process.cwd(), `output/${templateKey}.json`);
+
+    // Create output directory if it doesn't exist
+    const outputDir = path.join(process.cwd(), "output");
+    await fs.mkdir(outputDir, { recursive: true });
+
+    const outputFile = path.join(outputDir, `${templateKey}.json`);
 
     await saveTemplateStructureToJson(inputPath, outputFile);
     const result = await readTemplateStructureFromJson(outputFile);
@@ -60,7 +65,12 @@ export async function GET(
       );
     }
 
-    await fs.unlink(outputFile);
+    // Clean up the temporary file
+    try {
+      await fs.unlink(outputFile);
+    } catch (cleanupError) {
+      console.warn("Failed to clean up temporary file:", cleanupError);
+    }
 
     return Response.json(
       { success: true, templateJson: result },
@@ -69,7 +79,10 @@ export async function GET(
   } catch (error) {
     console.error("Error generating template JSON:", error);
     return Response.json(
-      { error: "Failed to generate template" },
+      {
+        error: "Failed to generate template",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }

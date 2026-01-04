@@ -46,7 +46,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         if (!newUser) return false; // Return false if user creation fails
         return true; // Explicitly return true if user creation succeeds
       } else {
-        // Link the account to the user
+        // Link the account to user
         const existingAccount = await db.account.findUnique({
           where: {
             provider_providerAccountId: {
@@ -62,7 +62,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           providerAccountId: account.providerAccountId,
         });
 
-        // If the account does not exist, create it
+        // If account does not exist, create it
         if (!existingAccount) {
           await db.account.create({
             data: {
@@ -115,7 +115,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     },
 
     async session({ session, token }) {
-      // Attach the user ID from the token to the session
+      // Attach user ID from token to session
       if (token.sub && session.user) {
         session.user.id = token.sub as string;
       }
