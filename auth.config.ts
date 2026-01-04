@@ -16,6 +16,13 @@ export default {
     Google({
       clientId: process.env.NEXTAUTH_GOOGLE_ID!,
       clientSecret: process.env.NEXTAUTH_GOOGLE_SECRET!,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+        },
+      },
     }),
   ],
   pages: {

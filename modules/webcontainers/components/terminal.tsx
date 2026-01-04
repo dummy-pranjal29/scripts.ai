@@ -10,8 +10,8 @@ import React, {
   useMemo,
 } from "react";
 import type { Terminal } from "@xterm/xterm"; // Import Terminal type
-import type { FitAddon } from "xterm-addon-fit";
-import type { SearchAddon } from "xterm-addon-search";
+import type { FitAddon } from "@xterm/addon-fit";
+import type { SearchAddon } from "@xterm/addon-search";
 import type { WebContainer as WebContainerAPI } from "@webcontainer/api";
 // Dynamically import xterm and addons in useEffect to avoid SSR errors
 import { Button } from "@/components/ui/button";
@@ -311,9 +311,9 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(
         const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { SearchAddon }] =
           await Promise.all([
             import("@xterm/xterm"),
-            import("xterm-addon-fit"),
-            import("xterm-addon-web-links"),
-            import("xterm-addon-search"),
+            import("@xterm/addon-fit"),
+            import("@xterm/addon-web-links"),
+            import("@xterm/addon-search"),
           ]);
         // Import CSS with TypeScript expect error comment
         // @ts-expect-error - CSS imports don't have type declarations
