@@ -27,9 +27,29 @@ const AddNewButton = () => {
     setSelectedTemplate(data);
 
     const res = await createPlayground(data);
-    toast.success("Playground Created successfully");
+
+    if (!res || !res.success) {
+      toast.error(
+        `Failed to create playground: ${
+          res && "error" in res && res.error ? res.error : "Unknown error"
+        }`
+      );
+      return;
+    }
+
+    if (!res.playground?.id) {
+      toast.error("Playground created but no ID received");
+      return;
+    }
+
+    if (res.offline) {
+      toast.success("Playground Created successfully (Offline Mode)");
+    } else {
+      toast.success("Playground Created successfully");
+    }
+
     setIsModalOpen(false);
-    router.push(`/playground/${res?.playground?.id}`);
+    router.push(`/playground/${res.playground.id}`);
   };
 
   return (

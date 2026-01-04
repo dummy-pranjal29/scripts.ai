@@ -1,11 +1,11 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, safeDbOperation } from "@/lib/db";
 import { TemplateFolder } from "../lib/template-types";
 import { currentUser } from "@/modules/auth/actions";
 
 export const getPlaygroundById = async (id: string) => {
-  try {
+  return await safeDbOperation(async () => {
     const playground = await db.playground.findUnique({
       where: { id },
       select: {
@@ -18,9 +18,7 @@ export const getPlaygroundById = async (id: string) => {
       },
     });
     return playground;
-  } catch (error) {
-    console.log(error);
-  }
+  }, null);
 };
 
 export const SaveUpdatedCode = async (
@@ -30,7 +28,7 @@ export const SaveUpdatedCode = async (
   const user = await currentUser();
   if (!user) return null;
 
-  try {
+  return await safeDbOperation(async () => {
     const updatedPlayground = await db.templateFile.upsert({
       where: {
         playgroundId,
@@ -45,8 +43,5 @@ export const SaveUpdatedCode = async (
     });
 
     return updatedPlayground;
-  } catch (error) {
-    console.log("SaveUpdatedCode error:", error);
-    return null;
-  }
+  }, null);
 };

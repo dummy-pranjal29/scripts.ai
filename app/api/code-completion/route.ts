@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { generateGroqCodeCompletion } from "@/lib/groq";
 
 interface CodeSuggestionRequest {
   fileContent: string;
@@ -141,34 +142,7 @@ Generate suggestion:`;
 
 async function generateSuggestion(prompt: string): Promise<string> {
   try {
-    const response = await fetch("http://localhost:11434/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "codellama:latest",
-        prompt,
-        stream: false,
-        option: {
-          temperature: 0.7,
-          max_tokens: 300,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`AI service error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    let suggestion = data.response;
-
-    // Clean up the suggestion
-    if (suggestion.includes("```")) {
-      const codeMatch = suggestion.match(/```[\w]*\n?([\s\S]*?)```/);
-      suggestion = codeMatch ? codeMatch[1].trim() : suggestion;
-    }
-
-    return suggestion;
+    return await generateGroqCodeCompletion(prompt);
   } catch (error) {
     console.error("AI generation error:", error);
     return "// AI suggestion unavailable";

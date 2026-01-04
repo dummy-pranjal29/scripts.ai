@@ -2,11 +2,7 @@ import { db } from "@/lib/db";
 import { error } from "console";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
+import { generateGroqResponse, type ChatMessage } from "@/lib/groq";
 
 interface ChatRequest {
   message: string;
@@ -16,7 +12,10 @@ interface ChatRequest {
   model?: string;
 }
 
-async function generateAIResponse(messages: ChatMessage[]): Promise<string> {
+async function generateAIResponse(
+  messages: ChatMessage[],
+  model: string = "llama-3.1-70b-versatile"
+): Promise<string> {
   const systemPrompt = `You are a senior-level AI coding assistant designed to help software developers effectively.
 
 Your core responsibilities include:
@@ -106,68 +105,16 @@ Response:
 Your goal is to act like a reliable, experienced developer who gives accurate, actionable, and well-reasoned guidance.
 `;
 
-  const fullMessages = [{ role: "system", content: systemPrompt }, ...messages];
-
-  const prompt = fullMessages
-    .map((msg) => `${msg.role}: ${msg.content}`)
-    .join("\n\n");
+  const fullMessages: ChatMessage[] = [
+    { role: "system" as const, content: systemPrompt },
+    ...messages,
+  ];
 
   try {
-    const response = await fetch("http://localhost:11434/api/generate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "qwen2.5:1.5b",
-        prompt: prompt,
-        stream: false,
-        options: {
-          temperature: 0.7, // Controls randomness (0-1)
-          max_tokens: 1000, // Maximum response length
-          top_p: 0.9, // controls diversity
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage =
-        errorData.error || `HTTP ${response.status}: ${response.statusText}`;
-      console.error("Ollama API error:", errorMessage);
-      throw new Error(`Ollama error: ${errorMessage}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.response) {
-      throw new Error("No response from AI model");
-    }
-
-    return data.response.trim();
+    return await generateGroqResponse(fullMessages, model);
   } catch (error) {
     console.error("AI generation error:", error);
-
-    if (error instanceof Error) {
-      // Check for specific Ollama errors
-      if (error.message.includes("requires more system memory")) {
-        throw new Error(
-          "The AI model requires more memory than available. Please try a smaller model or free up system memory."
-        );
-      }
-      if (error.message.includes("Ollama error:")) {
-        throw new Error(error.message);
-      }
-      if (error.message.includes("ECONNREFUSED")) {
-        throw new Error(
-          "Cannot connect to Ollama. Please ensure Ollama is running on localhost:11434."
-        );
-      }
-    }
-
-    throw new Error(
-      "Failed to generate AI response. Please check if Ollama is running and has sufficient memory."
-    );
+    throw error;
   }
 }
 
@@ -179,7 +126,7 @@ export async function POST(req: NextRequest) {
       history = [],
       sessionId,
       mode = "chat",
-      model = "gpt-6",
+      model = "llama-3.1-8b-instant",
     } = body;
 
     // Get authenticated user
@@ -261,11 +208,15 @@ export async function POST(req: NextRequest) {
 
     const messages: ChatMessage[] = [
       ...recentHistory,
-      { role: "user", content: message },
+      { role: "user" as const, content: message },
     ];
 
-    // Generate AI response
-    const aiResponse = await generateAIResponse(messages);
+    // Generate AI response with the specified model
+    console.log(`Generating AI response using model: ${model}`);
+    const aiResponse = await generateAIResponse(messages, model);
+    console.log(
+      `AI response generated successfully, length: ${aiResponse.length}`
+    );
 
     // Save AI response to database
     const savedMessage = await db.chatMessage.create({

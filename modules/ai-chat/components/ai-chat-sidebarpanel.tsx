@@ -1,6 +1,6 @@
 "use client";
 
-import type React from "react";
+import React, { type ReactNode } from "react";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -453,11 +453,17 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                     <select
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
-                      className="bg-zinc-900/60 border border-zinc-800 rounded px-2 py-1 text-zinc-200 focus:outline-none"
+                      className="bg-zinc-900/60 border border-zinc-800/50 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:ring-blue-500 focus:ring-blue-500/20"
                     >
-                      <option value="qwen2.5">qwen2.5 (1.5B)</option>
-                      <option value="codellama">codellama</option>
-                      <option value="llama2">llama2</option>
+                      <option value="qwen2.5">Qwen 2.5 (1.5B)</option>
+                      <option value="llama-3.1-8b-instant">
+                        Llama 3.1 8B Instant
+                      </option>
+                      <option value="llama-3.1-70b-versatile">
+                        Llama 3.1 70B Versatile
+                      </option>
+                      <option value="mixtral-8x7b">Mixtral 8x7B</option>
+                      <option value="gemma-7b-it">Gemma 7B IT</option>
                     </select>
                   </div>
                   <div className="relative">
@@ -576,6 +582,22 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                           remarkPlugins={[remarkGfm, remarkMath]}
                           rehypePlugins={[rehypeKatex]}
                           components={{
+                            p: ({ children }) => {
+                              // Check if children contain div elements and handle accordingly
+                              const childrenArray =
+                                React.Children.toArray(children);
+                              const hasDivElement = childrenArray.some(
+                                (child) =>
+                                  React.isValidElement(child) &&
+                                  child.type === "div"
+                              );
+
+                              if (hasDivElement) {
+                                return <>{children}</>;
+                              }
+
+                              return <p>{children}</p>;
+                            },
                             code: ({
                               inline,
                               className,
@@ -594,7 +616,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                                 );
                               }
                               return (
-                                <div className="bg-zinc-800 rounded-lg p-4 my-4">
+                                <div className="bg-zinc-800 rounded-lg p-4 my-4 not-prose">
                                   <pre className="text-sm text-zinc-100 overflow-x-auto">
                                     <code className={className}>
                                       {children}

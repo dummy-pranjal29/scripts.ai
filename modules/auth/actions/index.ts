@@ -2,64 +2,62 @@
 
 import { auth } from "@/auth";
 
-import { db } from "@/lib/db";
+import { db, safeDbOperation } from "@/lib/db";
 
 export const getUserById = async (id: string) => {
-  try {
-    const user = await db.user.findUnique({
-      where: { id },
-      include: {
-        accounts: true,
-      },
-    });
+  return await safeDbOperation(
+    async () => {
+      const user = await db.user.findUnique({
+        where: { id },
+        include: {
+          accounts: true,
+        },
+      });
 
-    console.log("getUserById result:", {
-      id,
-      hasAccounts: user?.accounts && user.accounts.length > 0,
-      accountCount: user?.accounts?.length || 0,
-    });
+      console.log("getUserById result:", {
+        id,
+        hasAccounts: user?.accounts && user.accounts.length > 0,
+        accountCount: user?.accounts?.length || 0,
+      });
 
-    return user;
-  } catch (error) {
-    // Log error properly for server-side debugging
-    console.error("Error in getUserById:", error);
-    // Return a mock user object for graceful degradation
-    return {
+      return user;
+    },
+    // Fallback user object for graceful degradation
+    {
       id: id,
-      email: "mock@example.com",
-      name: "Mock User",
+      email: `user-${id}@fallback.local`,
+      name: "User (Offline Mode)",
       image: null,
       role: "USER",
       accounts: [],
-    };
-  }
+    }
+  );
 };
 
 export const getAccountByUserId = async (userId: string) => {
-  try {
-    const account = await db.account.findFirst({
-      where: {
+  return await safeDbOperation(
+    async () => {
+      const account = await db.account.findFirst({
+        where: {
+          userId,
+        },
+      });
+
+      console.log("Account found for user:", {
         userId,
-      },
-    });
+        account: account
+          ? {
+              id: account.id,
+              provider: account.provider,
+              hasToken: !!account.access_token,
+            }
+          : null,
+      });
 
-    console.log("Account found for user:", {
-      userId,
-      account: account
-        ? {
-            id: account.id,
-            provider: account.provider,
-            hasToken: !!account.access_token,
-          }
-        : null,
-    });
-
-    return account;
-  } catch (error) {
-    // Log error properly for server-side debugging
-    console.error("Error in getAccountByUserId:", error);
-    return null;
-  }
+      return account;
+    },
+    null // Return null for accounts when database is unavailable
+  );
 };
 
 export const currentUser = async () => {
