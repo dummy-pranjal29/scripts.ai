@@ -1,4 +1,8 @@
-import { TemplateFile, TemplateFolder, TemplateItem } from "./template-types";
+import {
+  TemplateFile,
+  TemplateFolder,
+  TemplateItem,
+} from "./template-types.js";
 
 // Server-side implementation for reading template structure from JSON
 export const readTemplateStructureFromJson = async (

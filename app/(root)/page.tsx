@@ -3,7 +3,31 @@ import { cn } from "@/lib/utils";
 import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-export default function Home() {
+import { auth } from "@/auth";
+
+export default async function Home() {
+  const session = await auth();
+
+  // If user is authenticated, redirect to dashboard
+  if (session) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Welcome back!</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Redirecting you to your dashboard...
+          </p>
+          <Link href="/dashboard">
+            <Button variant="brand" size="lg">
+              Go to Dashboard
+              <ArrowUpRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className=" z-20 flex flex-col items-center justify-start min-h-screen py-2 mt-10">
       <div className="flex flex-col justify-center items-center my-5">
@@ -20,7 +44,7 @@ export default function Home() {
         tooling, it helps developers write, debug, and optimize code
         efficiently, all in one focused workspace.
       </p>
-      <Link href={"/dashboard"}>
+      <Link href="/auth/sign-in">
         <Button variant={"brand"} className="mb-4" size={"lg"}>
           Get Started
           <ArrowUpRight className="w-3.5 h-3.5" />
