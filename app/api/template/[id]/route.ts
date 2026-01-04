@@ -1,4 +1,4 @@
-import { scanTemplateDirectoryInMemory } from "@/modules/playground/lib/path-to-json";
+import { scanTemplateDirectoryInMemory } from "@/modules/playground/lib/path-to-json.js";
 import { db, safeDbOperation } from "@/lib/db";
 import { templatePaths } from "@/lib/template";
 import path from "path";
